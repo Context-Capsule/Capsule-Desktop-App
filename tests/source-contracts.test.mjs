@@ -44,15 +44,24 @@ test('GUI restore uses worker decision-file contract instead of fake interactive
   assert.doesNotMatch(source, /child\.write\(/);
 });
 
-test('GUI update reuses the proven service-safe force-save path', async () => {
+test('GUI save and update reuse the mature worker while excluding their launcher terminal', async () => {
   const source = await read('src-tauri/src/lib.rs');
-  const updateStart = source.indexOf('OperationRequest::Update');
-  const restoreStart = source.indexOf('OperationRequest::Restore', updateStart);
-  const update = source.slice(updateStart, restoreStart);
-  assert.match(update, /"save"/);
-  assert.match(update, /"--force"/);
-  assert.match(update, /"--cli-force"/);
-  assert.match(update, /"--ignore-app"/);
+  assert.match(source, /const CALLER_PID_ENV: &str = "CONTEXT_CAPSULE_CALLER_PID"/);
+  assert.match(source, /command = command\.env\(CALLER_PID_ENV, std::process::id\(\)\.to_string\(\)\)/);
+  const saveImplementation = source.slice(source.indexOf('fn operation_command'), source.indexOf('async fn preferred_operation_directory'));
+  assert.match(saveImplementation, /OperationRequest::Save[\s\S]*"--cli-force"[\s\S]*"capsule-agent-worker"/);
+  assert.match(saveImplementation, /OperationRequest::Update[\s\S]*"--force"[\s\S]*"--cli-force"[\s\S]*"capsule-agent-worker"/);
+});
+
+test('save cancellation owns the child process and only cleans up newly-created capsules', async () => {
+  const source = await read('src-tauri/src/lib.rs');
+  assert.match(source, /struct ActiveOperation/);
+  assert.match(source, /child: CommandChild/);
+  assert.match(source, /async fn cancel_operation/);
+  assert.match(source, /operation\.child\s*\.kill\(\)/);
+  assert.match(source, /filter\(\|_\| !operation\.save_existed\)/);
+  assert.match(source, /sidecar\("capsule-agent-worker"\)/);
+  assert.match(source, /args\(\["delete", &name\]\)/);
 });
 
 test('save and update select a trusted project working directory', async () => {
@@ -73,11 +82,12 @@ test('autostart is tray-only while explicit launch opens the app', async () => {
   assert.ok(packageJson.dependencies['@tauri-apps/plugin-autostart']);
 });
 
-test('desktop branding uses the Browser Extension asset without making startup depend on it', async () => {
+test('desktop branding uses only the Browser Extension artwork when available', async () => {
   const packageJson = JSON.parse(await read('package.json'));
   const gitignore = await read('.gitignore');
   const svg = await read('src-tauri/icons/icon.svg');
   const branding = await read('scripts/prepare-branding.mjs');
+  const overrides = await read('src/glass-overrides.css');
   assert.equal(packageJson.scripts['icons:generate'], 'tauri icon src-tauri/icons/icon.svg');
   assert.match(packageJson.scripts['tauri:dev'], /icons:generate/);
   assert.match(packageJson.scripts['tauri:dev'], /brand:prepare/);
@@ -86,26 +96,32 @@ test('desktop branding uses the Browser Extension asset without making startup d
   assert.match(branding, /Capsule-Browser-Extension/);
   assert.match(branding, /src.+popup.+capsule-bgless\.png/s);
   assert.match(branding, /keeping the checked-in desktop icon fallback/);
-  assert.match(branding, /npx/);
+  assert.match(overrides, /context-capsule-logo\.png/);
+  assert.match(overrides, /brand-mark > svg \{ display: none !important; \}/);
   assert.match(svg, /#eaff36/i);
   assert.match(gitignore, /src-tauri\/icons\/icon\.ico/);
 });
 
-test('quick panel is compact and Windows surfaces use native acrylic transparency', async () => {
+test('quick panel is smaller and Windows surfaces use stronger acrylic transparency', async () => {
   const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
   const quick = config.app.windows.find((window) => window.label === 'quick');
   const main = config.app.windows.find((window) => window.label === 'main');
   const overrides = await read('src/glass-overrides.css');
-  assert.equal(quick.width, 380);
-  assert.equal(quick.height, 520);
+  assert.equal(quick.width, 340);
+  assert.equal(quick.height, 440);
   assert.equal(quick.transparent, true);
   assert.ok(quick.windowEffects.effects.includes('acrylic'));
   assert.equal(main.transparent, true);
   assert.ok(main.windowEffects.effects.includes('acrylic'));
-  assert.match(overrides, /rgba\(17,21,13,\.68\)/);
-  assert.match(overrides, /context-capsule-logo\.png/);
-  assert.match(overrides, /brand-mark::after/);
+  assert.match(overrides, /rgba\(17,21,13,\.43\)/);
+  assert.match(overrides, /liquid-glass\.glass \{[\s\S]*border: 0 !important/);
+  assert.match(overrides, /liquid-glass\.glass > \* \{ border-radius: inherit; \}/);
   assert.doesNotMatch(overrides, /linear-gradient\([^;]*#060706/);
+});
+
+test('live application list hides executable paths and process metadata', async () => {
+  const overrides = await read('src/glass-overrides.css');
+  assert.match(overrides, /live-summary \+ liquid-glass\.table-card[\s\S]*display: none/);
 });
 
 test('sidecar preparation validates the desktop API before copying runtime binaries', async () => {
@@ -134,6 +150,7 @@ test('desktop keeps diagnostic logging and bounded rotation', async () => {
   assert.match(source, /operation\.begin/);
   assert.match(source, /operation\.complete/);
   assert.match(source, /operation\.cwd/);
+  assert.match(source, /operation\.cancel/);
 });
 
 test('renamed Browser Extension repository is the documented integration source', async () => {
