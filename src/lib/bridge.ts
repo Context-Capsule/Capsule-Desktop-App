@@ -28,6 +28,7 @@ export const getOverview = () => queryDesktop<OverviewData>('overview');
 export const getCapsule = (reference: string) => queryDesktop<any>('capsule', [reference]);
 export const getHistory = (name: string) => queryDesktop<HistoryData>('history', [name]);
 export const getDiff = (before: string, after: string) => queryDesktop<any>('diff', [before, after]);
+export const getApplications = () => queryDesktop<any>('applications');
 export const getLiveWorkspace = () => queryDesktop<any>('live');
 export const getHealth = () => queryDesktop<any>('health');
 export const getServices = (reference: string) => queryDesktop<ServicesData>('services', [reference]);
