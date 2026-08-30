@@ -73,21 +73,22 @@
       ? app.executable_path.replace(/\//g, '\\').toLowerCase()
       : '';
     return name === 'context capsule'
-      || name === 'context-capsule-desktop'
+      || name === INTERNAL_APP_SELECTOR
       || executable.endsWith('\\context-capsule-desktop.exe');
   }
 
   async function withInternalExclusions(request: OperationRequest): Promise<OperationRequest> {
     if (request.kind !== 'save' && request.kind !== 'update') return request;
 
-    // --ignore-app intentionally validates selectors. Only add the internal
-    // desktop selector when live discovery actually sees this app, so a hidden
-    // or future non-windowed desktop process can never make an otherwise valid
-    // save fail merely because the reserved selector did not match anything.
+    // --ignore-app intentionally validates selectors. Add the exact name that
+    // live discovery reported for the desktop app, rather than a guessed alias.
+    // This both keeps Context Capsule out of new snapshots and guarantees that
+    // the extra selector cannot make a valid save fail because it matched zero apps.
     try {
       const live = await getLiveWorkspace();
-      if ((live?.applications ?? []).some(isContextCapsuleApplication)) {
-        const ignoreApps = Array.from(new Set([...(request.ignoreApps ?? []), INTERNAL_APP_SELECTOR]));
+      const internalApp = (live?.applications ?? []).find(isContextCapsuleApplication);
+      if (internalApp && typeof internalApp.name === 'string' && internalApp.name.trim()) {
+        const ignoreApps = Array.from(new Set([...(request.ignoreApps ?? []), internalApp.name.trim()]));
         return { ...request, ignoreApps };
       }
     } catch { /* The operation itself remains authoritative if live discovery is unavailable. */ }
