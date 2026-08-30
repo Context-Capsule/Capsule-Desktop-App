@@ -1,70 +1,115 @@
-/* Native-window translucency and compact tray-panel tuning.
-   Tauri supplies Windows Acrylic; these alpha surfaces deliberately avoid
-   repainting the WebView as an opaque rectangle on top of it. */
+/* Native-window translucency and tray-panel tuning.
+   Tauri supplies Windows Acrylic; every painted layer stays translucent and
+   every light-DOM surface is clipped to the exact radius of its glass host. */
 body::before {
   inset: -18%;
   background:
-    radial-gradient(circle at 14% 8%, rgba(228,255,46,.10), transparent 24%),
-    radial-gradient(circle at 85% 76%, rgba(165,255,38,.055), transparent 24%),
-    radial-gradient(circle at 54% 40%, rgba(255,255,255,.028), transparent 30%),
-    linear-gradient(142deg, rgba(17,21,13,.68) 0%, rgba(6,7,6,.62) 46%, rgba(11,13,8,.68) 100%);
+    radial-gradient(circle at 14% 8%, rgba(228,255,46,.075), transparent 24%),
+    radial-gradient(circle at 85% 76%, rgba(165,255,38,.038), transparent 24%),
+    radial-gradient(circle at 54% 40%, rgba(255,255,255,.018), transparent 30%),
+    linear-gradient(142deg, rgba(17,21,13,.43) 0%, rgba(6,7,6,.36) 46%, rgba(11,13,8,.43) 100%);
 }
+body::after { opacity: .12; }
 
-.quick-root { padding: 6px; }
+/* simple-liquid-glass already renders the smooth optical edge. The old CSS
+   border was a second, square-edged border underneath it. Keep one edge only,
+   and clip every painted child to the same radius. */
+liquid-glass.glass {
+  border: 0 !important;
+  overflow: hidden !important;
+  background: linear-gradient(145deg, rgba(255,255,255,.032), rgba(255,255,255,.008)) !important;
+}
+liquid-glass.glass > * { border-radius: inherit; }
+
+.quick-root { padding: 5px; }
 .quick-panel {
-  padding: 14px;
-  background: linear-gradient(180deg, rgba(11,14,9,.42), rgba(5,7,5,.54));
-  backdrop-filter: blur(12px) saturate(1.08);
+  padding: 11px;
+  background: linear-gradient(180deg, rgba(11,14,9,.27), rgba(5,7,5,.34));
+  backdrop-filter: blur(16px) saturate(1.1);
 }
-.quick-header { margin-bottom: 12px; }
-.quick-panel .brand-lockup { gap: 8px; }
-.quick-panel .brand-lockup strong { font-size: 12px; }
-.quick-panel .brand-lockup span { font-size: 8.5px; }
-.quick-panel .status-pill { padding: 5px 7px; font-size: 9px; }
+.quick-header { margin-bottom: 9px; }
+.quick-panel .brand-lockup { gap: 6px; }
+.quick-panel .brand-lockup strong { font-size: 10.5px; }
+.quick-panel .brand-lockup span { font-size: 7.4px; letter-spacing: .11em; }
+.quick-panel .status-pill { padding: 4px 6px; font-size: 8px; gap: 5px; }
+.quick-panel .status-orb { width: 5px; height: 5px; }
 .quick-panel .save-hero {
-  min-height: 62px;
-  grid-template-columns: 36px 1fr auto;
-  gap: 10px;
-  border-radius: 16px;
-  padding: 10px 12px;
+  min-height: 52px;
+  grid-template-columns: 30px 1fr auto;
+  gap: 8px;
+  border-radius: 13px;
+  padding: 8px 10px;
 }
-.quick-panel .save-icon { width: 34px; height: 34px; border-radius: 11px; }
-.quick-panel .save-hero strong { font-size: 13px; }
-.quick-panel .save-hero small { font-size: 9.5px; }
-.quick-panel .quick-section-heading { margin: 13px 2px 8px; }
-.quick-panel .quick-capsules { gap: 6px; padding-bottom: 7px; }
+.quick-panel .save-icon { width: 29px; height: 29px; border-radius: 9px; }
+.quick-panel .save-icon svg { width: 17px; height: 17px; }
+.quick-panel .save-hero strong { font-size: 11px; }
+.quick-panel .save-hero small { font-size: 8.2px; margin-top: 2px; }
+.quick-panel .save-hero > svg { width: 13px; height: 13px; }
+.quick-panel .quick-section-heading { margin: 10px 2px 6px; }
+.quick-panel .quick-section-heading strong { font-size: 10px; }
+.quick-panel .section-kicker { font-size: 7.3px; letter-spacing: .13em; }
+.quick-panel .quick-capsules { gap: 5px; padding-bottom: 5px; }
 .quick-panel .capsule-card-shell,
-.quick-panel .capsule-card-shell.compact { min-height: 72px; }
-.quick-panel .capsule-card { padding: 9px 10px; }
-.quick-panel .capsule-icon { width: 30px; height: 30px; border-radius: 9px; }
+.quick-panel .capsule-card-shell.compact { min-height: 61px; }
+.quick-panel .capsule-card {
+  padding: 7px 8px;
+  background: rgba(9,11,8,.26);
+}
+.quick-panel .capsule-main { gap: 7px; }
+.quick-panel .capsule-icon { width: 26px; height: 26px; border-radius: 8px; }
+.quick-panel .capsule-icon svg { width: 14px; height: 14px; }
+.quick-panel .capsule-title-row { gap: 5px; }
+.quick-panel .capsule-title-row strong { font-size: 10px; max-width: 142px; }
+.quick-panel .version { font-size: 6.8px; padding: 1px 4px; }
 .quick-panel .metrics,
-.quick-panel .note { margin-top: 2px; font-size: 8.7px; }
-.quick-panel .restore-button { padding: 5px 7px; }
-.quick-panel .quick-footer { padding-top: 7px; gap: 3px; }
-.quick-panel .quick-footer button { min-height: 30px; font-size: 8.8px; }
+.quick-panel .note { margin-top: 2px; font-size: 7.5px; max-width: 190px; }
+.quick-panel .time { font-size: 7px; }
+.quick-panel .time svg { width: 9px; height: 9px; }
+.quick-panel .restore-button { padding: 4px 6px; font-size: 7.6px; border-radius: 8px; }
+.quick-panel .restore-button svg { width: 11px; height: 11px; }
+.quick-panel .quick-footer { padding-top: 5px; gap: 2px; }
+.quick-panel .quick-footer button { min-height: 26px; font-size: 7.6px; gap: 4px; }
+.quick-panel .quick-footer svg { width: 12px; height: 12px; }
+.quick-panel .search-box { height: 28px; margin-bottom: 6px; }
+.quick-panel .search-box input { font-size: 8px; }
+.quick-panel .empty-state { min-height: 120px; }
 
-/* Overlay the exact Browser Extension artwork when prepare-branding has made
-   it available. The existing SVG mark remains underneath as a zero-network,
-   zero-dependency fallback if the PNG cannot be prepared. */
-.brand-mark { position: relative; overflow: hidden; }
+/* Use only the canonical Browser Extension artwork. The previous Sparkles SVG
+   is intentionally removed from rendering rather than sitting underneath it. */
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
 .brand-mark::after {
   content: '';
   position: absolute;
-  inset: 1px;
+  inset: 0;
   z-index: 2;
-  border-radius: inherit;
   background-image: url('/context-capsule-logo.png');
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
 }
-.brand-mark > svg { position: relative; z-index: 1; }
+.brand-mark > svg { display: none !important; }
 
-/* Keep the large application readable while allowing Windows Acrylic to show
-   through the shell rather than covering it with an opaque application layer. */
+/* Keep the large application readable while increasing the native Acrylic
+   visibility. */
 .full-root { background: transparent !important; }
 .sidebar {
-  background: linear-gradient(180deg, rgba(8,10,7,.64), rgba(5,7,5,.56)) !important;
-  backdrop-filter: blur(10px) saturate(1.06);
+  background: linear-gradient(180deg, rgba(8,10,7,.46), rgba(5,7,5,.38)) !important;
+  backdrop-filter: blur(14px) saturate(1.08);
 }
-.full-content { background: rgba(5,7,5,.24) !important; }
+.full-content { background: rgba(5,7,5,.12) !important; }
+
+/* The Live Workspace application list should be glanceable: app name only.
+   Terminal/service detail remains available in their dedicated rows. */
+.live-summary + liquid-glass.table-card .data-list > div > div > span,
+.live-summary + liquid-glass.table-card .data-list > div > code { display: none; }
+
+/* Operation and modal bodies are also light-DOM layers inside Glass. Keeping
+   their fills translucent prevents the same square-corner underlay elsewhere. */
+.modal-content { background: linear-gradient(180deg, rgba(15,18,12,.58), rgba(8,10,7,.66)); }
+.operation-card { background: rgba(7,9,6,.42); }
