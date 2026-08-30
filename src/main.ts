@@ -3,6 +3,7 @@ import App from './App.svelte';
 import { getFrontendTrace, traceFrontend } from './lib/bridge';
 import './app.css';
 import './glass-overrides.css';
+import './full-save-scroll.css';
 import 'simple-liquid-glass/web-component';
 
 window.addEventListener('error', (event) => {
