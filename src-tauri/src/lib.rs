@@ -178,17 +178,50 @@ async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Res
         &command_args[2..]
     ));
 
-    let output = app
+    // Do not use Command::output() for desktop reads. On Windows, discovery
+    // launches short-lived helper processes and a descendant can inherit one of
+    // the captured pipe handles. The direct capsule.exe process may terminate
+    // successfully (and even write its final log line) while output() continues
+    // waiting for the receiver channel / pipe EOF forever. Collect the same
+    // bounded stdout/stderr events, but make the direct child's Terminated event
+    // authoritative for completion.
+    let (mut rx, _child) = app
         .shell()
         .sidecar("capsule")
         .map_err(|error| format!("Context Capsule sidecar is unavailable: {error}"))?
         .args(command_args)
-        .output()
-        .await
+        .spawn()
         .map_err(|error| format!("desktop API process failed: {error}"))?;
 
-    let stdout = bounded_text(output.stdout);
-    let stderr = bounded_text(output.stderr);
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let mut termination_code = None;
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(bytes) => {
+                push_bounded(&mut stdout, &String::from_utf8_lossy(&bytes));
+            }
+            CommandEvent::Stderr(bytes) => {
+                push_bounded(&mut stderr, &String::from_utf8_lossy(&bytes));
+            }
+            CommandEvent::Error(error) => {
+                push_bounded(&mut stderr, &error);
+            }
+            CommandEvent::Terminated(payload) => {
+                termination_code = Some(payload.code.unwrap_or(1));
+                break;
+            }
+            _ => {}
+        }
+    }
+    let code = termination_code
+        .ok_or_else(|| "desktop API process ended without a termination event".to_owned())?;
+    append_app_log(format!(
+        "query action={action} terminated code={code} stdout_bytes={} stderr_bytes={}",
+        stdout.len(),
+        stderr.len()
+    ));
+
     let envelope: DesktopEnvelope = serde_json::from_str(stdout.trim()).map_err(|error| {
         append_app_log(format!(
             "query action={action} invalid-json error={error} stderr={stderr:?}"
