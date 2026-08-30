@@ -8,7 +8,7 @@
   } from '@tauri-apps/plugin-notification';
   import type { CapsuleSummary, OperationEvent, OperationRequest, Settings } from './lib/types';
   import { defaultSettings } from './lib/types';
-  import { cancelOperation, contract, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
+  import { cancelOperation, contract, getLiveWorkspace, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
   import FullApp from './components/FullApp.svelte';
   import OperationOverlay from './components/OperationOverlay.svelte';
   import Onboarding from './components/Onboarding.svelte';
@@ -67,10 +67,31 @@
     return 'Complete';
   }
 
-  function withInternalExclusions(request: OperationRequest): OperationRequest {
+  function isContextCapsuleApplication(app: any) {
+    const name = typeof app?.name === 'string' ? app.name.trim().toLowerCase() : '';
+    const executable = typeof app?.executable_path === 'string'
+      ? app.executable_path.replace(/\//g, '\\').toLowerCase()
+      : '';
+    return name === 'context capsule'
+      || name === 'context-capsule-desktop'
+      || executable.endsWith('\\context-capsule-desktop.exe');
+  }
+
+  async function withInternalExclusions(request: OperationRequest): Promise<OperationRequest> {
     if (request.kind !== 'save' && request.kind !== 'update') return request;
-    const ignoreApps = Array.from(new Set([...(request.ignoreApps ?? []), INTERNAL_APP_SELECTOR]));
-    return { ...request, ignoreApps };
+
+    // --ignore-app intentionally validates selectors. Only add the internal
+    // desktop selector when live discovery actually sees this app, so a hidden
+    // or future non-windowed desktop process can never make an otherwise valid
+    // save fail merely because the reserved selector did not match anything.
+    try {
+      const live = await getLiveWorkspace();
+      if ((live?.applications ?? []).some(isContextCapsuleApplication)) {
+        const ignoreApps = Array.from(new Set([...(request.ignoreApps ?? []), INTERNAL_APP_SELECTOR]));
+        return { ...request, ignoreApps };
+      }
+    } catch { /* The operation itself remains authoritative if live discovery is unavailable. */ }
+    return request;
   }
 
   async function refocusCurrentWindow() {
@@ -93,7 +114,7 @@
   async function execute(request: OperationRequest) {
     if (busy) return;
     if (request.kind === 'delete' && !window.confirm(`Delete “${request.name}” and all of its revisions?`)) return;
-    const effectiveRequest = withInternalExclusions(request);
+    const effectiveRequest = await withInternalExclusions(request);
     busy = true;
     operationVisible = true;
     operationStatus = 'running';
