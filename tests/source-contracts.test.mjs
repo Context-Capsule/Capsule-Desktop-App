@@ -94,7 +94,7 @@ test('desktop branding uses the canonical Browser Extension artwork for both Web
   assert.match(branding, /throw new Error\([\s\S]*canonical Context Capsule logo/);
   assert.match(branding, /node_modules.+@tauri-apps.+cli.+tauri\.js/s);
   assert.match(branding, /spawnSync\(process\.execPath, \[tauriCli, 'icon', destination\]/);
-  assert.doesNotMatch(branding, /npx\.cmd/);
+  assert.doesNotMatch(branding, /const npx = process\.platform/);
   assert.match(branding, /native executable, window and tray icons/);
   assert.match(overrides, /context-capsule-logo\.png/);
   assert.match(overrides, /brand-mark > svg \{ display: none !important; \}/);
