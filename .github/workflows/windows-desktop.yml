@@ -63,40 +63,8 @@ jobs:
       - name: Frontend production build
         run: npm run build
 
-      - name: Capture 340x440 quick-window visual fixtures
-        shell: pwsh
-        run: |
-          $edge = @(
-            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
-          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $edge) { throw 'Microsoft Edge is unavailable for quick-window visual validation.' }
-
-          $outputDir = Join-Path $PWD 'screenshots\quick'
-          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-          $fixture = (Resolve-Path 'tests\visual\quick-states.html').Path
-          $baseUri = [System.Uri]::new($fixture).AbsoluteUri
-          $states = @('save-loaded', 'save-error', 'restore-tall', 'onboarding', 'operation-error')
-          foreach ($state in $states) {
-            $profile = Join-Path $env:RUNNER_TEMP "context-capsule-edge-$state"
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $profile
-            $output = Join-Path $outputDir "$state.png"
-            $url = "${baseUri}?state=$state"
-            & $edge '--headless=new' '--disable-gpu' '--hide-scrollbars' "--user-data-dir=$profile" '--window-size=340,440' "--screenshot=$output" $url
-            $edgeExit = $LASTEXITCODE
-            # Edge's launcher can return before the headless child has flushed
-            # its screenshot, and on this self-hosted runner it may report a
-            # nonzero launcher exit even when the child renders successfully.
-            # Validate the isolated requested output itself instead of treating
-            # that launcher status as authoritative.
-            $deadline = [DateTime]::UtcNow.AddSeconds(10)
-            while (-not (Test-Path $output) -and [DateTime]::UtcNow -lt $deadline) {
-              Start-Sleep -Milliseconds 100
-            }
-            if (-not (Test-Path $output)) {
-              throw "Quick-window screenshot failed for state '$state' (Edge launcher exit $edgeExit)."
-            }
-          }
+      - name: Capture true 340x440 quick-window visual fixtures
+        run: node scripts/capture-quick-fixtures.mjs
 
       - name: Upload quick-window visual fixtures
         uses: actions/upload-artifact@v4
@@ -140,6 +108,7 @@ jobs:
         shell: pwsh
         run: |
           Write-Host 'Desktop native/frontend validation passed.'
-          Write-Host 'Quick-window screenshots are browser-rendered CSS fixtures at the native tray dimensions, not WebView2/native-window screenshots.'
+          Write-Host 'Quick-window screenshots use Chromium DevTools device-metrics emulation at exactly 340x440 CSS pixels and assert every shell remains inside the viewport.'
+          Write-Host 'They are browser-rendered CSS fixtures, not WebView2/native-window screenshots.'
           Write-Host 'This workflow intentionally does not manufacture a production installer with placeholder sidecars.'
           Write-Host 'Production packaging requires real release binaries from Capsule-CLI: capsule, agent worker, Firefox/Zen host, and Chrome host.'
