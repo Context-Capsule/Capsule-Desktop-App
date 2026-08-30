@@ -16,30 +16,38 @@ test('desktop bundle contains the complete Context Capsule runtime', async () =>
   ]);
 });
 
-test('webview shell access is limited to the read-only live sidecar command', async () => {
+test('webview has no arbitrary shell permission or JS shell dependency', async () => {
   const capabilities = JSON.parse(await read('src-tauri/capabilities/default.json'));
   const packageJson = JSON.parse(await read('package.json'));
-  assert.equal(packageJson.dependencies?.['@tauri-apps/plugin-shell'], '^2.3.5');
-  const shellPermissions = capabilities.permissions.filter((permission) =>
-    typeof permission === 'string'
-      ? permission.includes('shell')
-      : String(permission?.identifier ?? '').includes('shell')
-  );
-  assert.deepEqual(shellPermissions, [{
-    identifier: 'shell:allow-spawn',
-    allow: [{ name: 'binaries/capsule', sidecar: true, args: ['desktop', 'live'] }]
-  }]);
+  assert.equal(packageJson.dependencies?.['@tauri-apps/plugin-shell'], undefined);
+  assert.equal(capabilities.permissions.some((permission) => {
+    if (typeof permission === 'string') return permission.includes('shell');
+    return String(permission?.identifier ?? '').includes('shell');
+  }), false);
 });
 
 test('Rust backend restricts desktop reads and operations', async () => {
   const source = await read('src-tauri/src/lib.rs');
-  for (const readAction of ['contract', 'overview', 'live', 'health', 'log-paths', 'capsule', 'history', 'services', 'diff']) {
+  for (const readAction of ['contract', 'overview', 'applications', 'live', 'health', 'log-paths', 'capsule', 'history', 'services', 'diff']) {
     assert.match(source, new RegExp(`"${readAction.replace('-', '\\-')}"`));
   }
   for (const kind of ['Save', 'Update', 'Restore', 'Delete', 'Note', 'ServicePolicy', 'ServicePrestart', 'InstallBrowserHost']) {
     assert.match(source, new RegExp(`OperationRequest::${kind}`));
   }
   assert.match(source, /only Context Capsule log files can be opened/);
+});
+
+test('desktop reads resolve on direct child termination instead of output pipe EOF', async () => {
+  const source = await read('src-tauri/src/lib.rs');
+  const start = source.indexOf('async fn desktop_api_call');
+  const end = source.indexOf('async fn capsule_exists', start);
+  const implementation = source.slice(start, end);
+  assert.match(implementation, /\.spawn\(\)/);
+  assert.match(implementation, /CommandEvent::Terminated\(payload\)/);
+  assert.match(implementation, /termination_code = Some/);
+  assert.match(implementation, /break;/);
+  assert.doesNotMatch(implementation, /\.output\(\)\.await/);
+  assert.match(implementation, /query action=\{action\} terminated code=\{code\}/);
 });
 
 test('GUI restore uses worker decision-file contract instead of fake interactive stdin', async () => {
