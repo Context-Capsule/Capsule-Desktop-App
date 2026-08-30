@@ -10,12 +10,11 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "node --test tests/*.test.mjs",
     "tauri": "tauri",
-    "tauri:dev": "npm run brand:prepare && npm run icons:generate:brand && npm run sidecar:prepare && tauri dev",
-    "tauri:build": "npm run brand:prepare && npm run icons:generate:brand && npm run sidecar:prepare && tauri build",
+    "tauri:dev": "npm run icons:generate && npm run brand:prepare && npm run sidecar:prepare && tauri dev",
+    "tauri:build": "npm run icons:generate && npm run brand:prepare && npm run sidecar:prepare && tauri build",
     "brand:prepare": "node scripts/prepare-branding.mjs",
     "sidecar:prepare": "node scripts/prepare-sidecar.mjs",
-    "icons:generate": "tauri icon src-tauri/icons/icon.svg",
-    "icons:generate:brand": "tauri icon public/context-capsule-logo.png"
+    "icons:generate": "tauri icon src-tauri/icons/icon.svg"
   },
   "dependencies": {
     "@lucide/svelte": "^1.37.0",

@@ -43,16 +43,22 @@ body::before {
 .quick-panel .quick-footer { padding-top: 7px; gap: 3px; }
 .quick-panel .quick-footer button { min-height: 30px; font-size: 8.8px; }
 
-/* Use the exact Browser Extension artwork prepared by scripts/prepare-branding.mjs. */
-.brand-mark {
-  overflow: hidden;
-  background-color: rgba(234,255,54,.10);
+/* Overlay the exact Browser Extension artwork when prepare-branding has made
+   it available. The existing SVG mark remains underneath as a zero-network,
+   zero-dependency fallback if the PNG cannot be prepared. */
+.brand-mark { position: relative; overflow: hidden; }
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: 2;
+  border-radius: inherit;
   background-image: url('/context-capsule-logo.png');
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
 }
-.brand-mark > svg { opacity: 0; }
+.brand-mark > svg { position: relative; z-index: 1; }
 
 /* Keep the large application readable while allowing Windows Acrylic to show
    through the shell rather than covering it with an opaque application layer. */

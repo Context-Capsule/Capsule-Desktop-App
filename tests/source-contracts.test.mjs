@@ -73,18 +73,20 @@ test('autostart is tray-only while explicit launch opens the app', async () => {
   assert.ok(packageJson.dependencies['@tauri-apps/plugin-autostart']);
 });
 
-test('desktop runs prepare the Browser Extension brand while CI keeps a checked-in icon fallback', async () => {
+test('desktop branding uses the Browser Extension asset without making startup depend on it', async () => {
   const packageJson = JSON.parse(await read('package.json'));
   const gitignore = await read('.gitignore');
   const svg = await read('src-tauri/icons/icon.svg');
   const branding = await read('scripts/prepare-branding.mjs');
   assert.equal(packageJson.scripts['icons:generate'], 'tauri icon src-tauri/icons/icon.svg');
-  assert.equal(packageJson.scripts['icons:generate:brand'], 'tauri icon public/context-capsule-logo.png');
+  assert.match(packageJson.scripts['tauri:dev'], /icons:generate/);
   assert.match(packageJson.scripts['tauri:dev'], /brand:prepare/);
-  assert.match(packageJson.scripts['tauri:dev'], /icons:generate:brand/);
+  assert.match(packageJson.scripts['tauri:build'], /icons:generate/);
   assert.match(packageJson.scripts['tauri:build'], /brand:prepare/);
   assert.match(branding, /Capsule-Browser-Extension/);
   assert.match(branding, /src.+popup.+capsule-bgless\.png/s);
+  assert.match(branding, /keeping the checked-in desktop icon fallback/);
+  assert.match(branding, /npx/);
   assert.match(svg, /#eaff36/i);
   assert.match(gitignore, /src-tauri\/icons\/icon\.ico/);
 });
@@ -102,6 +104,7 @@ test('quick panel is compact and Windows surfaces use native acrylic transparenc
   assert.ok(main.windowEffects.effects.includes('acrylic'));
   assert.match(overrides, /rgba\(17,21,13,\.68\)/);
   assert.match(overrides, /context-capsule-logo\.png/);
+  assert.match(overrides, /brand-mark::after/);
   assert.doesNotMatch(overrides, /linear-gradient\([^;]*#060706/);
 });
 
