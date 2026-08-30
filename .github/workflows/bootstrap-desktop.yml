@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Reconstruct locally-tested source tree
+      - name: Reconstruct source and apply evidence-based fixes
         shell: pwsh
         run: |
           $parts = 0..4 | ForEach-Object {
@@ -39,37 +39,131 @@ jobs:
             Get-Content -Raw $name
           }
           $fixtureEncoded = Get-Content -Raw 'windows-sidecar-fixture.b64'
-          $encoded = $parts -join ''
-          $bytes = [Convert]::FromBase64String($encoded)
+          $bytes = [Convert]::FromBase64String(($parts -join ''))
           $archive = Join-Path $env:RUNNER_TEMP 'context-capsule-desktop-source.tar.gz'
           [IO.File]::WriteAllBytes($archive, $bytes)
           $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
           $expected = '755adb4286f67fc409120582dc61f95a7e81973428814a6f322e1fd610dd4185'
-          if ($hash -ne $expected) {
-            throw "Desktop source archive hash mismatch: expected $expected, got $hash"
-          }
+          if ($hash -ne $expected) { throw "Desktop source archive hash mismatch: expected $expected, got $hash" }
 
           Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force
           tar -xzf $archive -C $PWD
           if ($LASTEXITCODE -ne 0) { throw 'Could not extract desktop source archive' }
+
+          # Fix only issues proven by the first POTUS run.
+          $package = Get-Content -Raw package.json | ConvertFrom-Json
+          if (-not $package.devDependencies.PSObject.Properties['@types/node']) {
+            $package.devDependencies | Add-Member -NotePropertyName '@types/node' -NotePropertyValue '^24.3.0'
+          }
+          $package | ConvertTo-Json -Depth 20 | Set-Content package.json -Encoding utf8
+
+          $ts = Get-Content -Raw tsconfig.json | ConvertFrom-Json
+          $ts.compilerOptions.lib = @('ESNext', 'DOM', 'DOM.Iterable')
+          $ts.compilerOptions.types = @('svelte', 'node')
+          $ts | ConvertTo-Json -Depth 20 | Set-Content tsconfig.json -Encoding utf8
+
+          foreach ($file in @('src\components\SaveModal.svelte', 'src\components\RestoreModal.svelte')) {
+            $text = Get-Content -Raw $file
+            $text = $text.Replace('class:rotated={advanced}', "class={advanced ? 'rotated' : ''}")
+            $text = $text.Replace(' autofocus', '')
+            $text = $text -replace '<textarea([^>]*)\s*/>', '<textarea$1></textarea>'
+            Set-Content -LiteralPath $file -Value $text -Encoding utf8
+          }
+
+          $restore = Get-Content -Raw 'src\components\RestoreModal.svelte'
+          $restore = $restore -replace '\.filter\(\(service\)\s*=>', '.filter((service: ServiceSummary) =>'
+          $restore = $restore -replace '\.map\(\(service\)\s*=>', '.map((service: ServiceSummary) =>'
+          Set-Content -LiteralPath 'src\components\RestoreModal.svelte' -Value $restore -Encoding utf8
+
+          $note = @'
+          <script lang="ts">
+            import { onMount } from 'svelte';
+            import Modal from './Modal.svelte';
+          
+            let { capsuleName, initial = '', onclose, onsave } = $props<{
+              capsuleName: string;
+              initial?: string;
+              onclose: () => void;
+              onsave: (message: string) => void;
+            }>();
+          
+            let message = $state('');
+          
+            onMount(() => {
+              message = initial;
+            });
+          </script>
+          
+          <Modal title="Continuation Note" subtitle={`Leave context for the next time you restore ${capsuleName}.`} {onclose}>
+            <div class="form-stack">
+              <label class="field-label">Note
+                <textarea class="text-input note-editor" bind:value={message} maxlength="8192" rows="6" placeholder="What should future-you know?"></textarea>
+              </label>
+              <div class="modal-actions">
+                <button class="secondary-button" onclick={onclose}>Cancel</button>
+                <button class="primary-button" disabled={!message.trim()} onclick={() => onsave(message.trim())}>Save Note</button>
+              </div>
+            </div>
+          </Modal>
+          '@
+          Set-Content -LiteralPath 'src\components\NoteModal.svelte' -Value $note -Encoding utf8
+
+          $prestart = @'
+          <script lang="ts">
+            import { onMount } from 'svelte';
+            import type { ServiceSummary } from '../lib/types';
+            import Modal from './Modal.svelte';
+          
+            let { service, onclose, onsave } = $props<{
+              service: ServiceSummary;
+              onclose: () => void;
+              onsave: (command: string | null) => void;
+            }>();
+          
+            let command = $state('');
+          
+            onMount(() => {
+              command = service.pre_start_command ?? '';
+            });
+          </script>
+          
+          <Modal title="Pre-start Command" subtitle="Run setup in the same restored shell before this service starts." {onclose} width={520}>
+            <div class="form-stack">
+              <div class="service-preview"><span>Service</span><code>{service.command}</code></div>
+              <label class="field-label">Run before service
+                <textarea class="text-input note-editor" bind:value={command} rows="4" placeholder=". .\venv\Scripts\Activate.ps1"></textarea>
+                <small>Leave this empty and choose Clear to remove the saved pre-start step.</small>
+              </label>
+              <div class="modal-actions split-actions">
+                <button class="danger-button subtle-danger" disabled={!service.pre_start_command} onclick={() => onsave(null)}>Clear</button>
+                <span class="action-spacer"></span>
+                <button class="secondary-button" onclick={onclose}>Cancel</button>
+                <button class="primary-button" disabled={!command.trim()} onclick={() => onsave(command.trim())}>Save</button>
+              </div>
+            </div>
+          </Modal>
+          '@
+          Set-Content -LiteralPath 'src\components\PrestartModal.svelte' -Value $prestart -Encoding utf8
+
+          foreach ($ignore in @(
+            'src-tauri/icons/64x64.png',
+            'src-tauri/icons/icon.png',
+            'src-tauri/icons/StoreLogo.png',
+            'src-tauri/icons/android/',
+            'src-tauri/icons/ios/'
+          )) {
+            if (-not (Select-String -Path .gitignore -SimpleMatch $ignore -Quiet)) { Add-Content .gitignore $ignore }
+          }
 
           [IO.File]::WriteAllBytes(
             (Join-Path $PWD 'tests\sidecar-prepare.test.mjs'),
             [Convert]::FromBase64String($fixtureEncoded)
           )
 
-          foreach ($required in @(
-            'package.json',
-            'src\App.svelte',
-            'src-tauri\Cargo.toml',
-            'src-tauri\src\lib.rs',
-            '.github\workflows\windows-desktop.yml'
-          )) {
+          foreach ($required in @('package.json','src\App.svelte','src-tauri\Cargo.toml','src-tauri\src\lib.rs','.github\workflows\windows-desktop.yml')) {
             if (-not (Test-Path $required)) { throw "Reconstructed source is missing $required" }
           }
-          if (Test-Path '.github\workflows\bootstrap-desktop.yml') {
-            throw 'Final source must not retain the one-shot bootstrap workflow'
-          }
+          if (Test-Path '.github\workflows\bootstrap-desktop.yml') { throw 'Final source must not retain the one-shot bootstrap workflow' }
 
       - name: Ensure stable Rust toolchain
         shell: pwsh
@@ -93,18 +187,12 @@ jobs:
         run: npm run icons:generate
 
       - name: Source and packaging contract tests
-        id: contracts
-        continue-on-error: true
         run: npm test
 
       - name: Svelte and TypeScript checks
-        id: svelte_check
-        continue-on-error: true
         run: npm run check
 
       - name: Frontend production build
-        id: frontend_build
-        continue-on-error: true
         run: npm run build
 
       - name: Prepare non-production CI sidecar placeholders
@@ -121,44 +209,22 @@ jobs:
             Set-Content -NoNewline -Path (Join-Path $dir "$name-$triple.exe") -Value 'CI packaging placeholder'
           }
 
-      - name: Rust format
-        id: rust_fmt
-        continue-on-error: true
+      - name: Apply and verify Rust format
         shell: pwsh
-        run: cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
+        run: |
+          cargo fmt --manifest-path src-tauri\Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'cargo fmt failed' }
+          cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'formatted Rust source still fails rustfmt check' }
 
       - name: Tauri backend tests
-        id: rust_test
-        continue-on-error: true
         run: cargo test --manifest-path src-tauri\Cargo.toml
 
       - name: Tauri backend check
-        id: rust_check
-        continue-on-error: true
         run: cargo check --manifest-path src-tauri\Cargo.toml --all-targets
 
       - name: Compile Tauri application without bundling placeholder sidecars
-        id: tauri_build
-        continue-on-error: true
         run: npm run tauri -- build --no-bundle
-
-      - name: Require every validation stage to pass
-        shell: pwsh
-        run: |
-          $results = @{
-            contracts = '${{ steps.contracts.outcome }}'
-            svelte_check = '${{ steps.svelte_check.outcome }}'
-            frontend_build = '${{ steps.frontend_build.outcome }}'
-            rust_fmt = '${{ steps.rust_fmt.outcome }}'
-            rust_test = '${{ steps.rust_test.outcome }}'
-            rust_check = '${{ steps.rust_check.outcome }}'
-            tauri_build = '${{ steps.tauri_build.outcome }}'
-          }
-          $failed = $results.GetEnumerator() | Where-Object { $_.Value -ne 'success' }
-          $results.GetEnumerator() | Sort-Object Name | Format-Table -AutoSize
-          if ($failed) {
-            throw "Native desktop validation failed: $($failed.Name -join ', ')"
-          }
 
       - name: Commit validated source tree without scheduling another CI run
         shell: pwsh
@@ -167,8 +233,8 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add -A
           if (git diff --cached --quiet) { throw 'Validated source reconstruction produced no repository changes' }
-          git commit -m 'feat: implement Tauri desktop app [skip ci]'
+          git commit -m 'feat: implement tray-first Tauri desktop app [skip ci]'
           if ($LASTEXITCODE -ne 0) { throw 'Could not commit validated desktop source' }
           git push origin HEAD:${{ github.ref_name }}
           if ($LASTEXITCODE -ne 0) { throw 'Could not push validated desktop source' }
-          Write-Host 'Validated desktop source was pushed. [skip ci] prevents a duplicate native run.'
+          Write-Host 'Validated desktop source pushed after all Windows gates passed.'
