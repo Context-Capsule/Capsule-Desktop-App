@@ -32,6 +32,31 @@ test('save advanced uses the exact same live-workspace API path as the main Live
   assert.doesNotMatch(source, /<small>\{app\.executable_path\}<\/small>/);
 });
 
+test('save application renderer deduplicates name selectors and exposes frontend diagnostics instead of failing silently', async () => {
+  const source = await read('src/components/SaveModal.svelte');
+  const bridge = await read('src/lib/bridge.ts');
+  const main = await read('src/main.ts');
+
+  assert.match(source, /function uniqueApplications/);
+  assert.match(source, /const seen = new Set<string>\(\)/);
+  assert.match(source, /duplicate_names=/);
+  assert.match(source, /\{#each detectedApps as app\}/);
+  assert.doesNotMatch(source, /\{#each detectedApps as app \(app\.name\)\}/);
+  assert.match(source, /Stage: \{debugStage\}/);
+  assert.match(source, /Copy diagnostics/);
+  assert.match(source, /traceFrontend\('save\.apps\.load'/);
+  assert.match(source, /rows-assigned detected=/);
+  assert.match(source, /finally elapsed_ms=/);
+
+  assert.match(bridge, /FRONTEND_TRACE_KEY/);
+  assert.match(bridge, /traceFrontend\('bridge\.invoke', `begin action=/);
+  assert.match(bridge, /resolved action=\$\{action\}/);
+  assert.match(bridge, /localStorage\.setItem\(FRONTEND_TRACE_KEY/);
+  assert.match(main, /window\.addEventListener\('error'/);
+  assert.match(main, /window\.addEventListener\('unhandledrejection'/);
+  assert.match(main, /traceFrontend\('webview\.error'/);
+});
+
 test('save dialog keeps Zen safety explicit and gives the extension reconnect loop enough time after host repair', async () => {
   const source = await read('src/components/SaveModal.svelte');
   assert.match(source, /zenApp = applications\.find\(isZenApplication\)/);
