@@ -1,13 +1,24 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
+const rustTargetSegment = `${String.raw`\`}src-tauri${String.raw`\`}target${String.raw`\`}`;
+
 export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
   server: {
     port: 1420,
     strictPort: true,
-    host: '127.0.0.1'
+    host: '127.0.0.1',
+    watch: {
+      // Cargo continuously creates/replaces executables under src-tauri/target.
+      // Watching those files on Windows (especially inside OneDrive) can race
+      // with the linker and surface as EBUSY from Node's FSWatcher.
+      ignored: (path) => {
+        const normalizedPath = path.replaceAll('/', String.raw`\`);
+        return normalizedPath.includes(rustTargetSegment);
+      }
+    }
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
@@ -16,4 +27,3 @@ export default defineConfig({
     sourcemap: !!process.env.TAURI_ENV_DEBUG
   }
 });
-
