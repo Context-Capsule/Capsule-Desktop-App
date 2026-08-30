@@ -85,17 +85,17 @@
   async function withInternalExclusions(request: OperationRequest): Promise<OperationRequest> {
     if (request.kind !== 'save' && request.kind !== 'update') return request;
 
-    // SaveModal preloads live discovery while the user types and includes the exact
-    // detected desktop-app selector invisibly. Do not repeat the expensive full
-    // discovery when that selector is already present. Update/other call sites
-    // keep the authoritative fallback below.
+    // Advanced discovery includes the exact detected desktop-app selector when
+    // available. If it was not opened, retain the authoritative live fallback
+    // so Context Capsule itself is still excluded without relying on a guessed
+    // --ignore-app selector that the CLI could correctly reject as unmatched.
     if (request.ignoreApps.some(isInternalSelector)) return request;
 
     try {
       const live = await getLiveWorkspace();
       const internalApp = (live?.applications ?? []).find(isContextCapsuleApplication);
       if (internalApp && typeof internalApp.name === 'string' && internalApp.name.trim()) {
-        const ignoreApps = Array.from(new Set([...(request.ignoreApps ?? []), internalApp.name.trim()]));
+        const ignoreApps = Array.from(new Set([...request.ignoreApps, internalApp.name.trim()]));
         return { ...request, ignoreApps };
       }
     } catch { /* The operation itself remains authoritative if live discovery is unavailable. */ }
@@ -131,17 +131,25 @@
   async function execute(request: OperationRequest) {
     if (busy) return;
     if (request.kind === 'delete' && !window.confirm(`Delete “${request.name}” and all of its revisions?`)) return;
-    const effectiveRequest = await withInternalExclusions(request);
+
+    // Paint the operation state synchronously before any discovery/preflight
+    // await. Previously SaveModal closed first, then this function waited on a
+    // full live-workspace query, exposing the tray home until the user reopened
+    // it. Keeping the overlay visible from the first tick makes progress honest.
     busy = true;
     operationVisible = true;
     operationStatus = 'running';
-    operationTitle = titleFor(effectiveRequest);
+    operationTitle = titleFor(request);
     operationPhase = 'Preparing…';
     operationLines = [];
     operationId = '';
-    operationCancelable = effectiveRequest.kind === 'save';
+    operationCancelable = request.kind === 'save';
     cancelling = false;
+
     try {
+      const effectiveRequest = await withInternalExclusions(request);
+      operationTitle = titleFor(effectiveRequest);
+      operationCancelable = effectiveRequest.kind === 'save';
       const result = await runOperation(effectiveRequest);
       operationId = result.operationId;
       if (result.cancelled) {

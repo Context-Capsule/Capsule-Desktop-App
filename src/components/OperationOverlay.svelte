@@ -41,3 +41,22 @@
     </Glass>
   </div>
 </div>
+
+<style>
+  /* The tray WebView is deliberately transparent. Center against the actual
+     340×440 viewport explicitly instead of relying on inherited grid sizing,
+     which could shift after the Save modal unmounted. */
+  :global(html[data-window-mode='quick'] .operation-overlay) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px !important;
+  }
+
+  :global(html[data-window-mode='quick'] .operation-shell) {
+    width: min(300px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: auto !important;
+    align-self: center !important;
+  }
+</style>

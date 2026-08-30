@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { ChevronDown, LoaderCircle, RefreshCw, ShieldCheck, Wifi, WifiOff } from '@lucide/svelte';
   import { getLiveWorkspace, runOperation } from '../lib/bridge';
   import Modal from './Modal.svelte';
@@ -11,7 +10,6 @@
 
   type DetectedApplication = { name: string; executable_path?: string | null };
 
-  const APPLICATION_DISCOVERY_TIMEOUT_MS = 6500;
   let name = $state('');
   let note = $state('');
   let advanced = $state(false);
@@ -50,26 +48,17 @@
     }
   }
 
-  async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<T>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`Application discovery timed out after ${Math.round(timeoutMs / 1000)} seconds.`)), timeoutMs);
-        })
-      ]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
   async function loadApplications(force = false) {
     if (loadingApps || (!force && detectedApps.length)) return;
     loadingApps = true;
     appError = '';
     try {
-      const live = await withTimeout(getLiveWorkspace(), APPLICATION_DISCOVERY_TIMEOUT_MS);
+      // This deliberately matches the previously working behavior: discovery
+      // starts only when Advanced is opened. Do not impose an arbitrary timer
+      // on the mature live-workspace query; terminal/Docker discovery can take
+      // longer on a busy Windows machine even though application discovery is
+      // still progressing correctly.
+      const live = await getLiveWorkspace();
       const applications = (live?.applications ?? [])
         .filter((app: any) => typeof app?.name === 'string' && app.name.trim()) as DetectedApplication[];
       const internal = applications.find(isContextCapsuleApplication);
@@ -109,8 +98,12 @@
         const detail = result.stderr.split(/\r?\n/).filter(Boolean).slice(-2).join(' ');
         throw new Error(detail || 'Firefox / Zen native host repair failed.');
       }
-      browserMessage = 'Native host repaired. Waiting for the extension to publish fresh tab state…';
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      // The Browser Extension intentionally retries native messaging every five
+      // seconds after a disconnect. Give that proven reconnect loop enough time
+      // before checking semantic state again instead of declaring repair failed
+      // after the old 900 ms delay.
+      browserMessage = 'Native host repaired. Waiting for Zen to reconnect…';
+      await new Promise((resolve) => setTimeout(resolve, 5_300));
       await loadApplications(true);
       browserMessage = firefoxFresh
         ? 'Firefox / Zen is connected and fresh browser tab state is available.'
@@ -137,12 +130,6 @@
     ]));
     onsave({ name: clean, note: note.trim(), ignoreApps: effectiveIgnored });
   };
-
-  onMount(() => {
-    // Start discovery while the user types so Advanced is normally instant.
-    // It is time-bounded, so a slow terminal/Docker probe can never leave this dialog spinning forever.
-    void loadApplications();
-  });
 </script>
 
 <Modal title="Save Capsule" subtitle="Capture the workspace exactly where you are." {onclose}>
