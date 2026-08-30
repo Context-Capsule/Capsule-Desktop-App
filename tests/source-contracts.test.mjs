@@ -58,7 +58,7 @@ test('save cancellation owns the child process and only cleans up newly-created 
   assert.match(source, /struct ActiveOperation/);
   assert.match(source, /child: CommandChild/);
   assert.match(source, /async fn cancel_operation/);
-  assert.match(source, /operation\.child\s*\.kill\(\)/);
+  assert.match(source, /operation[\s\S]*\.child[\s\S]*\.kill\(\)/);
   assert.match(source, /filter\(\|_\| !operation\.save_existed\)/);
   assert.match(source, /sidecar\("capsule-agent-worker"\)/);
   assert.match(source, /args\(\["delete", &name\]\)/);
