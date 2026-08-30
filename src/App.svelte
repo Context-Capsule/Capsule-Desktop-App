@@ -8,7 +8,7 @@
   } from '@tauri-apps/plugin-notification';
   import type { CapsuleSummary, OperationEvent, OperationRequest, Settings } from './lib/types';
   import { defaultSettings } from './lib/types';
-  import { cancelOperation, contract, getLiveWorkspace, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
+  import { cancelOperation, contract, getApplications, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
   import FullApp from './components/FullApp.svelte';
   import OperationOverlay from './components/OperationOverlay.svelte';
   import Onboarding from './components/Onboarding.svelte';
@@ -86,19 +86,19 @@
     if (request.kind !== 'save' && request.kind !== 'update') return request;
 
     // Advanced discovery includes the exact detected desktop-app selector when
-    // available. If it was not opened, retain the authoritative live fallback
-    // so Context Capsule itself is still excluded without relying on a guessed
-    // --ignore-app selector that the CLI could correctly reject as unmatched.
+    // available. If it was not opened, use the same lightweight application
+    // enumeration as the chooser so self-exclusion never waits on terminal,
+    // Docker or toolchain discovery.
     if (request.ignoreApps.some(isInternalSelector)) return request;
 
     try {
-      const live = await getLiveWorkspace();
-      const internalApp = (live?.applications ?? []).find(isContextCapsuleApplication);
+      const discovery = await getApplications();
+      const internalApp = (discovery?.applications ?? []).find(isContextCapsuleApplication);
       if (internalApp && typeof internalApp.name === 'string' && internalApp.name.trim()) {
         const ignoreApps = Array.from(new Set([...request.ignoreApps, internalApp.name.trim()]));
         return { ...request, ignoreApps };
       }
-    } catch { /* The operation itself remains authoritative if live discovery is unavailable. */ }
+    } catch { /* The operation itself remains authoritative if application discovery is unavailable. */ }
     return request;
   }
 
