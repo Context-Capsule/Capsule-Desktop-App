@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Reconstruct source and apply evidence-based fixes
+      - name: Reconstruct source and apply POTUS-proven fixes
         shell: pwsh
         run: |
           $parts = 0..4 | ForEach-Object {
@@ -50,10 +50,16 @@ jobs:
           tar -xzf $archive -C $PWD
           if ($LASTEXITCODE -ne 0) { throw 'Could not extract desktop source archive' }
 
-          # Fix only issues proven by the first POTUS run.
           $package = Get-Content -Raw package.json | ConvertFrom-Json
-          if (-not $package.devDependencies.PSObject.Properties['@types/node']) {
-            $package.devDependencies | Add-Member -NotePropertyName '@types/node' -NotePropertyValue '^24.3.0'
+          foreach ($dependency in @{
+            '@types/node' = '^24.3.0'
+            'esbuild' = '^0.25.10'
+          }.GetEnumerator()) {
+            if ($package.devDependencies.PSObject.Properties[$dependency.Key]) {
+              $package.devDependencies.($dependency.Key) = $dependency.Value
+            } else {
+              $package.devDependencies | Add-Member -NotePropertyName $dependency.Key -NotePropertyValue $dependency.Value
+            }
           }
           $package | ConvertTo-Json -Depth 20 | Set-Content package.json -Encoding utf8
 
@@ -81,6 +87,10 @@ jobs:
           $restore = Get-Content -Raw 'src\components\RestoreModal.svelte'
           $restore = $restore -replace '\.filter\(\(service\)\s*=>', '.filter((service: ServiceSummary) =>'
           $restore = $restore -replace '\.map\(\(service\)\s*=>', '.map((service: ServiceSummary) =>'
+          $restore = $restore.Replace(
+            '  let replace = $state(defaultReplace);',
+            "  let replace = `$state(false);`r`n  `$effect(() => { replace = defaultReplace; });"
+          )
           Set-Content -LiteralPath 'src\components\RestoreModal.svelte' -Value $restore -Encoding utf8
 
           $note = @'
