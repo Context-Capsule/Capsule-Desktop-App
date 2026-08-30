@@ -18,7 +18,9 @@
           <div><h2>{title}</h2>{#if subtitle}<p>{subtitle}</p>{/if}</div>
           <button class="icon-button" title="Close" onclick={onclose}><X size={18}/></button>
         </div>
-        {@render children()}
+        <div class="modal-scroll">
+          {@render children()}
+        </div>
       </div>
     </Glass>
   </div>
