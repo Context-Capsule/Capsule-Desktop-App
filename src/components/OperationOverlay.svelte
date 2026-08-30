@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { Check, CircleAlert, LoaderCircle, SquareTerminal } from '@lucide/svelte';
+  import { Check, CircleAlert, LoaderCircle, SquareTerminal, X } from '@lucide/svelte';
   import Glass from './Glass.svelte';
-  let { title, phase = 'Preparing…', lines = [], status = 'running', onclose } = $props<{
+  let { title, phase = 'Preparing…', lines = [], status = 'running', onclose, oncancel, cancelling = false } = $props<{
     title: string;
     phase?: string;
     lines?: string[];
     status?: 'running' | 'success' | 'error';
     onclose?: () => void;
+    oncancel?: () => void;
+    cancelling?: boolean;
   }>();
 </script>
 
@@ -28,7 +30,11 @@
             {#each lines.slice(-4) as line}<p>{line}</p>{/each}
           </div>
         {/if}
-        {#if status !== 'running' && onclose}
+        {#if status === 'running' && oncancel}
+          <button class="secondary-button small operation-cancel" disabled={cancelling} onclick={oncancel}>
+            <X size={14}/>{cancelling ? 'Cancelling…' : 'Cancel save'}
+          </button>
+        {:else if status !== 'running' && onclose}
           <button class="primary-button small" onclick={onclose}>Done</button>
         {/if}
       </div>
