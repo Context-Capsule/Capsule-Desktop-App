@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ChevronDown, LoaderCircle, RefreshCw, ShieldCheck, Wifi, WifiOff } from '@lucide/svelte';
-  import { getApplications, runOperation } from '../lib/bridge';
+  import { getLiveWorkspace, runOperation } from '../lib/bridge';
   import Modal from './Modal.svelte';
 
   let { onclose, onsave } = $props<{
@@ -53,18 +53,19 @@
     loadingApps = true;
     appError = '';
     try {
-      // Advanced only needs desktop application enumeration plus the recent
-      // Firefox/Zen semantic-state signal. Keep this read separate from the
-      // heavyweight live workspace scan (tools, Docker and terminals) so the
-      // chooser stays responsive without inventing another timeout.
-      const discovery = await getApplications();
-      const applications = (discovery?.applications ?? [])
+      // Keep Advanced on the same mature live-workspace request that populated
+      // this chooser reliably before the newer standalone applications command
+      // was introduced. The native layer records begin/end timing in the
+      // dedicated application-discovery log, so a future stall is diagnosable
+      // without hiding it behind an arbitrary frontend timeout.
+      const live = await getLiveWorkspace();
+      const applications = (live?.applications ?? [])
         .filter((app: any) => typeof app?.name === 'string' && app.name.trim()) as DetectedApplication[];
       const internal = applications.find(isContextCapsuleApplication);
       internalSelector = internal?.name?.trim() ?? '';
       zenApp = applications.find(isZenApplication) ?? null;
       browserStateKnown = true;
-      firefoxFresh = Boolean(discovery?.browsers?.firefox);
+      firefoxFresh = Boolean(live?.browsers?.firefox);
       detectedApps = applications
         .filter((app) => !isContextCapsuleApplication(app))
         .sort((a, b) => displayApplicationName(a.name).localeCompare(displayApplicationName(b.name)));
