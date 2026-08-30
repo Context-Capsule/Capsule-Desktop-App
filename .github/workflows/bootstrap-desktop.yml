@@ -76,6 +76,13 @@ jobs:
           }
           $ts | ConvertTo-Json -Depth 20 | Set-Content tsconfig.json -Encoding utf8
 
+          $vite = Get-Content -Raw vite.config.ts
+          $vite = $vite.Replace(
+            "target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',",
+            "target: process.env.TAURI_ENV_PLATFORM === 'windows' || process.platform === 'win32' ? 'chrome105' : 'safari13',"
+          )
+          Set-Content -LiteralPath vite.config.ts -Value $vite -Encoding utf8
+
           foreach ($file in @('src\components\SaveModal.svelte', 'src\components\RestoreModal.svelte')) {
             $text = Get-Content -Raw $file
             $text = $text.Replace('class:rotated={advanced}', "class={advanced ? 'rotated' : ''}")
