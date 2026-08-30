@@ -81,8 +81,19 @@ jobs:
             $profile = Join-Path $env:RUNNER_TEMP "context-capsule-edge-$state"
             Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $profile
             $output = Join-Path $outputDir "$state.png"
-            & $edge '--headless=new' '--disable-gpu' '--hide-scrollbars' "--user-data-dir=$profile" '--window-size=340,440' "--screenshot=$output" "$baseUri?state=$state"
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $output)) {
+            $url = "${baseUri}?state=$state"
+            & $edge '--headless=new' '--disable-gpu' '--hide-scrollbars' "--user-data-dir=$profile" '--window-size=340,440' "--screenshot=$output" $url
+            if ($LASTEXITCODE -ne 0) {
+              throw "Microsoft Edge failed while rendering quick state '$state'."
+            }
+            # Edge's launcher may return a moment before the headless child has
+            # flushed its screenshot. Wait only for the requested local output;
+            # this never touches the user's browser profile.
+            $deadline = [DateTime]::UtcNow.AddSeconds(10)
+            while (-not (Test-Path $output) -and [DateTime]::UtcNow -lt $deadline) {
+              Start-Sleep -Milliseconds 100
+            }
+            if (-not (Test-Path $output)) {
               throw "Quick-window screenshot failed for state '$state'."
             }
           }
