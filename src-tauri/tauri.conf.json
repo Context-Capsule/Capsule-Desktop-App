@@ -20,15 +20,12 @@
         "visible": false,
         "decorations": false,
         "transparent": true,
-        "windowEffects": {
-          "effects": ["acrylic"]
-        },
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false,
         "maximizable": false,
         "minimizable": false,
-        "shadow": true,
+        "shadow": false,
         "focus": true
       },
       {

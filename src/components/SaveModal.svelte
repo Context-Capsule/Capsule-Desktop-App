@@ -9,13 +9,34 @@
     onsave: (payload: { name: string; note: string; ignoreApps: string[] }) => void;
   }>();
 
+  type DetectedApplication = { name: string; executable_path?: string | null };
+
   let name = $state('');
   let note = $state('');
   let advanced = $state(false);
-  let detectedApps = $state<Array<{ name: string; executable_path?: string | null }>>([]);
+  let detectedApps = $state<DetectedApplication[]>([]);
   let ignoredApps = $state<string[]>([]);
   let loadingApps = $state(false);
   let appError = $state('');
+
+  function isContextCapsuleApplication(app: DetectedApplication) {
+    const appName = app.name.trim().toLowerCase();
+    const executable = (app.executable_path ?? '').replace(/\//g, '\\').toLowerCase();
+    return appName === 'context capsule'
+      || appName === 'context-capsule-desktop'
+      || executable.endsWith('\\context-capsule-desktop.exe');
+  }
+
+  function displayApplicationName(value: string) {
+    const name = value.trim();
+    switch (name.toLowerCase()) {
+      case 'zen': return 'Zen';
+      case 'windowsterminal': return 'Windows Terminal';
+      case 'systemsettings': return 'Settings';
+      case 'rtkuwp': return 'Realtek Audio Control';
+      default: return name;
+    }
+  }
 
   async function loadApplications() {
     if (loadingApps || detectedApps.length) return;
@@ -25,7 +46,8 @@
       const live = await getLiveWorkspace();
       detectedApps = (live?.applications ?? [])
         .filter((app: any) => typeof app?.name === 'string' && app.name.trim())
-        .sort((a: any, b: any) => a.name.localeCompare(b.name));
+        .filter((app: DetectedApplication) => !isContextCapsuleApplication(app))
+        .sort((a: DetectedApplication, b: DetectedApplication) => displayApplicationName(a.name).localeCompare(displayApplicationName(b.name)));
     } catch (error) {
       appError = error instanceof Error ? error.message : String(error);
     } finally {
@@ -69,7 +91,7 @@
     </button>
     {#if advanced}
       <div class="advanced-panel">
-        <div class="field-label"><span>Ignore applications</span><small>Unchecked applications remain part of the capsule. The CLI validates every exclusion before anything is stopped.</small></div>
+        <div class="field-label"><span>Ignore applications</span><small>Unchecked applications remain part of the capsule. Only application names are shown; Context Capsule itself is always excluded.</small></div>
         {#if loadingApps}
           <div class="inline-loading"><LoaderCircle size={15} class="spin"/> Detecting applications…</div>
         {:else if appError}
@@ -83,7 +105,7 @@
                   checked={ignoredApps.includes(app.name)}
                   onchange={(event) => toggleIgnored(app.name, (event.currentTarget as HTMLInputElement).checked)}
                 />
-                <span><strong>{app.name}</strong>{#if app.executable_path}<small>{app.executable_path}</small>{/if}</span>
+                <span><strong>{displayApplicationName(app.name)}</strong></span>
               </label>
             {/each}
           </div>
@@ -100,4 +122,3 @@
     </div>
   </div>
 </Modal>
-

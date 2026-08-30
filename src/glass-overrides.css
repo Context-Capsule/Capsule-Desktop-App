@@ -1,6 +1,7 @@
 /* Native-window translucency and tray-panel tuning.
-   Tauri supplies Windows Acrylic; every painted layer stays translucent and
-   every light-DOM surface is clipped to the exact radius of its glass host. */
+   Tauri supplies Windows Acrylic to the full app. The compact tray window is
+   deliberately a truly transparent native window so Windows cannot paint a
+   rectangular Acrylic/shadow layer behind its rounded glass surface. */
 body::before {
   inset: -18%;
   background:
@@ -10,6 +11,18 @@ body::before {
     linear-gradient(142deg, rgba(17,21,13,.43) 0%, rgba(6,7,6,.36) 46%, rgba(11,13,8,.43) 100%);
 }
 body::after { opacity: .12; }
+
+html[data-window-mode='quick'],
+html[data-window-mode='quick'] body,
+html[data-window-mode='quick'] #app,
+html[data-window-mode='quick'] .quick-root {
+  background: transparent !important;
+}
+html[data-window-mode='quick'] body::before,
+html[data-window-mode='quick'] body::after {
+  content: none !important;
+  display: none !important;
+}
 
 /* simple-liquid-glass already renders the smooth optical edge. The old CSS
    border was a second, square-edged border underneath it. Keep one edge only,

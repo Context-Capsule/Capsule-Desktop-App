@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import {
     isPermissionGranted,
     requestPermission,
@@ -14,8 +15,10 @@
   import QuickPanel from './components/QuickPanel.svelte';
 
   const mode = new URLSearchParams(window.location.search).get('mode') === 'full' ? 'full' : 'quick';
+  document.documentElement.dataset.windowMode = mode;
   const SETTINGS_KEY = 'context-capsule:settings:v1';
   const ONBOARDING_KEY = 'context-capsule:onboarding:v1';
+  const INTERNAL_APP_SELECTOR = 'context-capsule-desktop';
 
   let settings = $state<Settings>(loadSettings());
   let busy = $state(false);
@@ -58,6 +61,26 @@
     }
   }
 
+  function completionPhase(request: OperationRequest): string {
+    if (request.kind === 'save') return 'Capsule saved';
+    if (request.kind === 'restore') return 'Capsule restored';
+    return 'Complete';
+  }
+
+  function withInternalExclusions(request: OperationRequest): OperationRequest {
+    if (request.kind !== 'save' && request.kind !== 'update') return request;
+    const ignoreApps = Array.from(new Set([...(request.ignoreApps ?? []), INTERNAL_APP_SELECTOR]));
+    return { ...request, ignoreApps };
+  }
+
+  async function refocusCurrentWindow() {
+    try {
+      const current = getCurrentWindow();
+      await current.show();
+      await current.setFocus();
+    } catch { /* Focus recovery is best-effort if the native window is closing. */ }
+  }
+
   async function notify(title: string, body: string) {
     if (!settings.notifications) return;
     try {
@@ -70,17 +93,18 @@
   async function execute(request: OperationRequest) {
     if (busy) return;
     if (request.kind === 'delete' && !window.confirm(`Delete “${request.name}” and all of its revisions?`)) return;
+    const effectiveRequest = withInternalExclusions(request);
     busy = true;
     operationVisible = true;
     operationStatus = 'running';
-    operationTitle = titleFor(request);
+    operationTitle = titleFor(effectiveRequest);
     operationPhase = 'Preparing…';
     operationLines = [];
     operationId = '';
-    operationCancelable = request.kind === 'save';
+    operationCancelable = effectiveRequest.kind === 'save';
     cancelling = false;
     try {
-      const result = await runOperation(request);
+      const result = await runOperation(effectiveRequest);
       operationId = result.operationId;
       if (result.cancelled) {
         operationStatus = 'error';
@@ -88,11 +112,19 @@
         operationLines = [...operationLines, 'Save cancelled. No new capsule was kept.'].slice(-8);
       } else {
         operationStatus = result.success ? 'success' : 'error';
-        operationPhase = result.success ? 'Complete' : 'Action needs attention';
+        operationPhase = result.success ? completionPhase(effectiveRequest) : 'Action needs attention';
         if (result.success) {
           refreshVersion += 1;
+          if (effectiveRequest.kind === 'save' || effectiveRequest.kind === 'restore') {
+            await refocusCurrentWindow();
+          }
           await notify('Context Capsule', `${operationTitle} completed.`);
-          if (mode === 'quick' && settings.autoCloseQuickPanel) {
+          if (
+            mode === 'quick'
+            && settings.autoCloseQuickPanel
+            && effectiveRequest.kind !== 'save'
+            && effectiveRequest.kind !== 'restore'
+          ) {
             setTimeout(() => hideQuickPanel().catch(() => undefined), 1300);
           }
         } else {

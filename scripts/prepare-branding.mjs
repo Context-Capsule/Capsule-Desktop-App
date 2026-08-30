@@ -9,8 +9,7 @@ const destination = resolve(root, 'public', 'context-capsule-logo.png');
 const explicit = process.env.CAPSULE_BRAND_ASSET ? resolve(process.env.CAPSULE_BRAND_ASSET) : null;
 const candidates = [
   explicit,
-  resolve(root, '..', 'Capsule-Browser-Extension', 'src', 'popup', 'capsule-bgless.png'),
-  resolve(root, '..', 'Capsule-Firefox-Extension', 'src', 'popup', 'capsule-bgless.png')
+  resolve(root, '..', 'Capsule-Browser-Extension', 'src', 'popup', 'capsule-bgless.png')
 ].filter(Boolean);
 
 async function exists(path) {
@@ -23,7 +22,7 @@ async function installBrandAsset() {
     if (await exists(candidate)) {
       await copyFile(candidate, destination);
       console.log(`Prepared Context Capsule brand asset from ${candidate}`);
-      return true;
+      return;
     }
   }
 
@@ -43,32 +42,33 @@ async function installBrandAsset() {
   if (gh.status === 0 && gh.stdout?.length) {
     await writeFile(destination, gh.stdout);
     console.log('Prepared Context Capsule brand asset from Capsule-Browser-Extension via GitHub CLI.');
-    return true;
+    return;
   }
 
   if (await exists(destination)) {
     console.log(`Using existing Context Capsule brand asset at ${destination}`);
-    return true;
+    return;
   }
 
-  console.warn(
-    'Context Capsule Browser Extension logo was not available; keeping the checked-in desktop icon fallback. ' +
-    'Place Capsule-Browser-Extension beside this repo or set CAPSULE_BRAND_ASSET to use the canonical logo.'
+  throw new Error(
+    'The canonical Context Capsule logo is required. Place Capsule-Browser-Extension beside this repo, ' +
+    'set CAPSULE_BRAND_ASSET, or authenticate GitHub CLI before starting the desktop app.'
   );
-  return false;
 }
 
-if (await installBrandAsset()) {
-  // icons:generate runs first and guarantees a safe fallback. When the exact
-  // Browser Extension artwork is available, replace those generated native
-  // icons as a best-effort enhancement without making startup depend on it.
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const icons = spawnSync(npx, ['tauri', 'icon', destination], {
-    cwd: root,
-    stdio: 'inherit',
-    windowsHide: true
-  });
-  if (icons.status !== 0) {
-    console.warn('Could not regenerate native icons from the Browser Extension logo; the safe fallback icons remain in place.');
-  }
+await installBrandAsset();
+
+// The in-app artwork and the native executable/window/tray icons must come from
+// the exact same canonical PNG. Do not silently keep the old generated fallback:
+// that produced the correct logo inside the WebView while Windows still showed
+// the obsolete application icon.
+const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const icons = spawnSync(npx, ['tauri', 'icon', destination], {
+  cwd: root,
+  stdio: 'inherit',
+  windowsHide: true
+});
+if (icons.status !== 0) {
+  throw new Error('Could not regenerate native Context Capsule icons from the canonical Browser Extension logo.');
 }
+console.log('Regenerated native executable, window and tray icons from the canonical Context Capsule logo.');

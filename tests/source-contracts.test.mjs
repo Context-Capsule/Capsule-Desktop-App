@@ -82,27 +82,23 @@ test('autostart is tray-only while explicit launch opens the app', async () => {
   assert.ok(packageJson.dependencies['@tauri-apps/plugin-autostart']);
 });
 
-test('desktop branding uses only the Browser Extension artwork when available', async () => {
+test('desktop branding uses the canonical Browser Extension artwork for both WebView and native icons', async () => {
   const packageJson = JSON.parse(await read('package.json'));
-  const gitignore = await read('.gitignore');
-  const svg = await read('src-tauri/icons/icon.svg');
   const branding = await read('scripts/prepare-branding.mjs');
   const overrides = await read('src/glass-overrides.css');
-  assert.equal(packageJson.scripts['icons:generate'], 'tauri icon src-tauri/icons/icon.svg');
-  assert.match(packageJson.scripts['tauri:dev'], /icons:generate/);
   assert.match(packageJson.scripts['tauri:dev'], /brand:prepare/);
-  assert.match(packageJson.scripts['tauri:build'], /icons:generate/);
   assert.match(packageJson.scripts['tauri:build'], /brand:prepare/);
   assert.match(branding, /Capsule-Browser-Extension/);
   assert.match(branding, /src.+popup.+capsule-bgless\.png/s);
-  assert.match(branding, /keeping the checked-in desktop icon fallback/);
+  assert.doesNotMatch(branding, /Capsule-Firefox-Extension/);
+  assert.match(branding, /throw new Error\([\s\S]*canonical Context Capsule logo/);
+  assert.match(branding, /\['tauri', 'icon', destination\]/);
+  assert.match(branding, /native executable, window and tray icons/);
   assert.match(overrides, /context-capsule-logo\.png/);
   assert.match(overrides, /brand-mark > svg \{ display: none !important; \}/);
-  assert.match(svg, /#eaff36/i);
-  assert.match(gitignore, /src-tauri\/icons\/icon\.ico/);
 });
 
-test('quick panel is smaller and Windows surfaces use stronger acrylic transparency', async () => {
+test('quick panel is a transparent native window without a rectangular Windows backdrop', async () => {
   const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
   const quick = config.app.windows.find((window) => window.label === 'quick');
   const main = config.app.windows.find((window) => window.label === 'main');
@@ -110,13 +106,36 @@ test('quick panel is smaller and Windows surfaces use stronger acrylic transpare
   assert.equal(quick.width, 340);
   assert.equal(quick.height, 440);
   assert.equal(quick.transparent, true);
-  assert.ok(quick.windowEffects.effects.includes('acrylic'));
+  assert.equal(quick.shadow, false);
+  assert.equal(quick.windowEffects, undefined);
   assert.equal(main.transparent, true);
   assert.ok(main.windowEffects.effects.includes('acrylic'));
-  assert.match(overrides, /rgba\(17,21,13,\.43\)/);
+  assert.match(overrides, /html\[data-window-mode='quick'\][\s\S]*background: transparent !important/);
+  assert.match(overrides, /html\[data-window-mode='quick'\] body::before[\s\S]*content: none !important/);
   assert.match(overrides, /liquid-glass\.glass \{[\s\S]*border: 0 !important/);
   assert.match(overrides, /liquid-glass\.glass > \* \{ border-radius: inherit; \}/);
-  assert.doesNotMatch(overrides, /linear-gradient\([^;]*#060706/);
+});
+
+test('ignore application chooser renders short names only and hides Context Capsule itself', async () => {
+  const source = await read('src/components/SaveModal.svelte');
+  assert.match(source, /displayApplicationName/);
+  assert.match(source, /isContextCapsuleApplication/);
+  assert.match(source, /case 'zen': return 'Zen'/);
+  assert.match(source, /case 'windowsterminal': return 'Windows Terminal'/);
+  assert.match(source, /Context Capsule itself is always excluded/);
+  assert.doesNotMatch(source, /<small>\{app\.executable_path\}<\/small>/);
+});
+
+test('save and restore refocus the active Capsule window and saves always exclude the desktop app', async () => {
+  const source = await read('src/App.svelte');
+  assert.match(source, /getCurrentWindow/);
+  assert.match(source, /INTERNAL_APP_SELECTOR = 'context-capsule-desktop'/);
+  assert.match(source, /withInternalExclusions/);
+  assert.match(source, /await current\.show\(\)/);
+  assert.match(source, /await current\.setFocus\(\)/);
+  assert.match(source, /if \(request\.kind === 'save'\) return 'Capsule saved'/);
+  assert.match(source, /if \(request\.kind === 'restore'\) return 'Capsule restored'/);
+  assert.match(source, /effectiveRequest\.kind !== 'save'[\s\S]*effectiveRequest\.kind !== 'restore'/);
 });
 
 test('live application list hides executable paths and process metadata', async () => {
