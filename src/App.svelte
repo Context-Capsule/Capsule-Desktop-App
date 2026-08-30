@@ -203,8 +203,14 @@
     }
   }
 
-  function saveCapsule(payload: { name: string; note: string; ignoreApps: string[] }) {
-    execute({ kind: 'save', name: payload.name, note: payload.note || undefined, ignoreApps: payload.ignoreApps });
+  function saveCapsule(payload: { name: string; note: string; ignoreApps: string[]; captureServices: boolean }) {
+    execute({
+      kind: 'save',
+      name: payload.name,
+      note: payload.note || undefined,
+      ignoreApps: payload.ignoreApps,
+      captureServices: payload.captureServices
+    });
   }
 
   function restoreCapsule(payload: { capsule: CapsuleSummary; reference?: string; replace: boolean; decisions: any[]; only?: string[] }) {
@@ -260,4 +266,4 @@
     oncancel={operationStatus === 'running' && operationCancelable && operationId ? cancelCurrentSave : undefined}
     onclose={operationStatus === 'running' ? undefined : () => operationVisible = false}
   />
-{/if}
+{/if>
