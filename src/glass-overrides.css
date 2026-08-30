@@ -1,0 +1,331 @@
+/* Native-window translucency and tray-panel tuning.
+   Tauri supplies Windows Acrylic to the full app. The compact tray window is
+   deliberately a truly transparent native window so Windows cannot paint a
+   rectangular Acrylic/shadow layer behind its rounded glass surface. */
+body::before {
+  inset: -18%;
+  background:
+    radial-gradient(circle at 14% 8%, rgba(228,255,46,.075), transparent 24%),
+    radial-gradient(circle at 85% 76%, rgba(165,255,38,.038), transparent 24%),
+    radial-gradient(circle at 54% 40%, rgba(255,255,255,.018), transparent 30%),
+    linear-gradient(142deg, rgba(17,21,13,.43) 0%, rgba(6,7,6,.36) 46%, rgba(11,13,8,.43) 100%);
+}
+body::after { opacity: .12; }
+
+html[data-window-mode='quick'],
+html[data-window-mode='quick'] body,
+html[data-window-mode='quick'] #app,
+html[data-window-mode='quick'] .quick-root {
+  background: transparent !important;
+}
+html[data-window-mode='quick'] body::before,
+html[data-window-mode='quick'] body::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Modal and operation backdrops used to repaint the whole transparent native
+   tray window, making Windows' rectangular surface visible again while saving.
+   In quick mode the native window must stay transparent in every state; only
+   the rounded modal/operation card itself is painted. */
+html[data-window-mode='quick'] .modal-backdrop,
+html[data-window-mode='quick'] .operation-overlay,
+html[data-window-mode='quick'] .modal-shell,
+html[data-window-mode='quick'] .operation-shell {
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+
+/* simple-liquid-glass already renders the smooth optical edge. The old CSS
+   border was a second, square-edged border underneath it. Keep one edge only,
+   and clip every painted child to the same radius. */
+liquid-glass.glass {
+  border: 0 !important;
+  overflow: hidden !important;
+  background: linear-gradient(145deg, rgba(255,255,255,.032), rgba(255,255,255,.008)) !important;
+}
+liquid-glass.glass > * { border-radius: inherit; }
+
+.quick-root { padding: 5px; }
+.quick-panel {
+  padding: 11px;
+  /* Less transparent than the previous .27/.34 surface, while preserving the
+     transparent native corners and a restrained glass effect. */
+  background: linear-gradient(180deg, rgba(11,14,9,.58), rgba(5,7,5,.66));
+  backdrop-filter: blur(15px) saturate(1.08);
+}
+.quick-header { margin-bottom: 9px; }
+.quick-panel .brand-lockup { gap: 6px; }
+.quick-panel .brand-lockup strong { font-size: 10.5px; }
+.quick-panel .brand-lockup span { font-size: 7.4px; letter-spacing: .11em; }
+.quick-panel .status-pill { padding: 4px 6px; font-size: 8px; gap: 5px; }
+.quick-panel .status-orb { width: 5px; height: 5px; }
+.quick-panel .save-hero {
+  min-height: 52px;
+  grid-template-columns: 30px 1fr auto;
+  gap: 8px;
+  border-radius: 13px;
+  padding: 8px 10px;
+}
+.quick-panel .save-icon { width: 29px; height: 29px; border-radius: 9px; }
+.quick-panel .save-icon svg { width: 17px; height: 17px; }
+.quick-panel .save-hero strong { font-size: 11px; }
+.quick-panel .save-hero small { font-size: 8.2px; margin-top: 2px; }
+.quick-panel .save-hero > svg { width: 13px; height: 13px; }
+.quick-panel .quick-section-heading { margin: 10px 2px 6px; }
+.quick-panel .quick-section-heading strong { font-size: 10px; }
+.quick-panel .section-kicker { font-size: 7.3px; letter-spacing: .13em; }
+.quick-panel .quick-capsules { gap: 5px; padding-bottom: 5px; }
+.quick-panel .capsule-card-shell,
+.quick-panel .capsule-card-shell.compact { min-height: 61px; }
+.quick-panel .capsule-card {
+  padding: 7px 8px;
+  background: rgba(9,11,8,.44);
+}
+.quick-panel .capsule-main { gap: 7px; }
+.quick-panel .capsule-icon { width: 26px; height: 26px; border-radius: 8px; }
+.quick-panel .capsule-icon svg { width: 14px; height: 14px; }
+.quick-panel .capsule-title-row { gap: 5px; }
+.quick-panel .capsule-title-row strong { font-size: 10px; max-width: 142px; }
+.quick-panel .version { font-size: 6.8px; padding: 1px 4px; }
+.quick-panel .metrics,
+.quick-panel .note { margin-top: 2px; font-size: 7.5px; max-width: 190px; }
+.quick-panel .time { font-size: 7px; }
+.quick-panel .time svg { width: 9px; height: 9px; }
+.quick-panel .restore-button { padding: 4px 6px; font-size: 7.6px; border-radius: 8px; }
+.quick-panel .restore-button svg { width: 11px; height: 11px; }
+.quick-panel .quick-footer { padding-top: 5px; gap: 2px; }
+.quick-panel .quick-footer button { min-height: 26px; font-size: 7.6px; gap: 4px; }
+.quick-panel .quick-footer svg { width: 12px; height: 12px; }
+.quick-panel .search-box { height: 28px; margin-bottom: 6px; }
+.quick-panel .search-box input { font-size: 8px; }
+.quick-panel .empty-state { min-height: 120px; }
+
+/* Quick-window modal/operation cards remain readable even though their outer
+   full-window backdrop is deliberately transparent. */
+html[data-window-mode='quick'] .modal-content {
+  background: linear-gradient(180deg, rgba(15,18,12,.92), rgba(8,10,7,.95)) !important;
+}
+html[data-window-mode='quick'] .operation-card { background: rgba(7,9,6,.94) !important; }
+
+/* Use only the canonical Browser Extension artwork. The previous Sparkles SVG
+   is intentionally removed from rendering rather than sitting underneath it. */
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-image: url('/context-capsule-logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+.brand-mark > svg { display: none !important; }
+
+/* Keep the large application readable while increasing the native Acrylic
+   visibility. Scroll remains functional, but the browser/WebView scrollbar is
+   intentionally hidden so the full app keeps a native desktop appearance. */
+.full-root { background: transparent !important; }
+.sidebar {
+  background: linear-gradient(180deg, rgba(8,10,7,.46), rgba(5,7,5,.38)) !important;
+  backdrop-filter: blur(14px) saturate(1.08);
+}
+.full-content {
+  background: rgba(5,7,5,.12) !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.full-content::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* The Live Workspace application list should be glanceable: app name only.
+   Terminal/service detail remains available in their dedicated rows. */
+.live-summary + liquid-glass.table-card .data-list > div > div > span,
+.live-summary + liquid-glass.table-card .data-list > div > code { display: none; }
+
+/* Operation and modal bodies are also light-DOM layers inside Glass. Keeping
+   their fills translucent prevents the same square-corner underlay elsewhere. */
+.modal-content { background: linear-gradient(180deg, rgba(15,18,12,.58), rgba(8,10,7,.66)); }
+.operation-card { background: rgba(7,9,6,.42); }
+
+.browser-integration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(174,252,93,.13);
+  background: rgba(174,252,93,.045);
+}
+.browser-integration-row.warning {
+  border-color: rgba(255,216,77,.18);
+  background: rgba(255,216,77,.055);
+}
+.browser-integration-copy { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.browser-integration-copy > svg { flex: none; margin-top: 1px; color: var(--success); }
+.browser-integration-row.warning .browser-integration-copy > svg { color: var(--warning); }
+.browser-integration-copy strong { display: block; font-size: 9.5px; }
+.browser-integration-copy small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.35; }
+.browser-message { margin: -3px 0 10px; line-height: 1.4; }
+.app-discovery-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Modal is a shared viewport-bounded primitive. The heading stays stable while
+   only its body scrolls, so every Save/Restore/Note/Prestart state keeps its
+   actions reachable without painting a browser scrollbar outside the glass. */
+.modal-shell {
+  min-width: 0;
+  max-height: calc(100vh - 44px);
+}
+.modal-shell > liquid-glass {
+  display: block;
+  max-height: inherit;
+}
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: inherit;
+  overflow: hidden;
+}
+.modal-heading {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.modal-heading > div { min-width: 0; }
+.modal-heading h2,
+.modal-heading p { overflow-wrap: anywhere; }
+.modal-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.modal-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.app-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 9px;
+}
+.app-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 9px;
+  background: rgba(0,0,0,.12);
+  font-size: 9px;
+}
+.app-check-row input { flex: none; accent-color: var(--acid); }
+.app-check-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.inline-loading,
+.inline-warning,
+.inline-muted { font-size: 8.5px; line-height: 1.4; }
+.inline-loading { display: flex; align-items: center; gap: 7px; color: var(--muted); padding: 9px 0; }
+.inline-warning { color: #e3d794; }
+.inline-muted { color: var(--muted); padding: 9px 0; }
+.text-button { border: 0; background: none; color: var(--acid); cursor: pointer; padding: 2px 0; font-size: 8.5px; }
+
+/* 340x440 tray window: center every modal as a unit, then constrain the unit
+   to the usable native viewport. Tall bodies scroll inside the rounded card;
+   the transparent native corners never receive a rectangular backdrop. */
+html[data-window-mode='quick'] .modal-backdrop {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 10px !important;
+  overflow: hidden !important;
+}
+html[data-window-mode='quick'] .modal-shell {
+  width: 100% !important;
+  max-width: calc(100vw - 20px) !important;
+  max-height: calc(100vh - 20px) !important;
+  margin: auto !important;
+  min-width: 0 !important;
+}
+html[data-window-mode='quick'] .modal-shell > liquid-glass {
+  max-height: calc(100vh - 20px) !important;
+}
+html[data-window-mode='quick'] .modal-content {
+  max-height: calc(100vh - 20px) !important;
+  padding: 14px !important;
+}
+html[data-window-mode='quick'] .modal-heading {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+html[data-window-mode='quick'] .modal-heading h2 { font-size: 15px; }
+html[data-window-mode='quick'] .modal-heading p { margin-top: 3px; font-size: 8.8px; line-height: 1.35; }
+html[data-window-mode='quick'] .modal-heading .icon-button { width: 28px; height: 28px; flex: none; }
+html[data-window-mode='quick'] .modal-scroll {
+  max-width: 100%;
+  overscroll-behavior: contain;
+}
+html[data-window-mode='quick'] .form-stack { gap: 10px; }
+html[data-window-mode='quick'] .advanced-panel { padding: 10px; }
+html[data-window-mode='quick'] .modal-actions { flex-wrap: wrap; }
+html[data-window-mode='quick'] .modal-actions > button { flex: 1 1 auto; min-width: 0; }
+html[data-window-mode='quick'] .browser-integration-row {
+  align-items: stretch;
+  flex-direction: column;
+}
+html[data-window-mode='quick'] .browser-integration-row .secondary-button { align-self: flex-start; }
+html[data-window-mode='quick'] .app-discovery-error { align-items: flex-start; }
+html[data-window-mode='quick'] .restore-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html[data-window-mode='quick'] .service-choice {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+}
+html[data-window-mode='quick'] .service-choice code,
+html[data-window-mode='quick'] .service-choice-copy span { max-width: 100%; }
+html[data-window-mode='quick'] .compact-select { width: 100%; max-width: none; }
+html[data-window-mode='quick'] .resource-grid { grid-template-columns: 1fr; }
+
+/* Onboarding bypasses Modal.svelte, so give it the same quick-window contract. */
+html[data-window-mode='quick'] .onboarding-shell {
+  width: 100% !important;
+  max-width: calc(100vw - 20px) !important;
+  max-height: calc(100vh - 20px) !important;
+  margin: auto !important;
+}
+html[data-window-mode='quick'] .onboarding-shell > liquid-glass {
+  display: block;
+  max-height: calc(100vh - 20px) !important;
+}
+html[data-window-mode='quick'] .onboarding-card {
+  min-height: 0 !important;
+  max-height: calc(100vh - 20px) !important;
+  padding: 22px 18px 16px !important;
+  justify-content: flex-start !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html[data-window-mode='quick'] .onboarding-card::-webkit-scrollbar { width: 0; height: 0; display: none; }
+html[data-window-mode='quick'] .onboarding-progress { left: 18px; right: 18px; top: 14px; }
+html[data-window-mode='quick'] .onboarding-visual {
+  width: 50px;
+  height: 50px;
+  margin: 10px 0 14px;
+  border-radius: 17px;
+}
+html[data-window-mode='quick'] .onboarding-card h1 { font-size: 20px; margin: 7px 0 9px; }
+html[data-window-mode='quick'] .onboarding-card > p { margin-bottom: 14px; }
+html[data-window-mode='quick'] .onboarding-toggle,
+html[data-window-mode='quick'] .integration-button { margin-bottom: 11px; padding: 10px; }
+html[data-window-mode='quick'] .onboarding-skip { right: 10px; top: 24px; }

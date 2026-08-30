@@ -1,0 +1,62 @@
+<!doctype html>
+<html data-window-mode="full">
+<head>
+  <meta charset="utf-8">
+  <title>Context Capsule Full Save Scroll</title>
+  <link rel="stylesheet" href="../../src/app.css">
+  <link rel="stylesheet" href="../../src/glass-overrides.css">
+  <link rel="stylesheet" href="../../src/full-save-scroll.css">
+  <style>
+    html,body{width:1100px;height:760px;margin:0;overflow:hidden}
+    body{background:linear-gradient(135deg,#26322b,#101510 48%,#303a2a)}
+    liquid-glass{display:block;border-radius:24px}
+    .modal-backdrop{display:grid}
+    .modal-shell{width:520px;max-width:calc(100vw - 48px)}
+    .modal-shell>liquid-glass{width:100%;border-radius:24px}
+    .service-capture-fixture{display:flex;gap:9px;align-items:flex-start;padding:10px;margin-bottom:12px;border-radius:11px;border:1px solid rgba(234,255,54,.10);background:rgba(234,255,54,.035);font-size:9px}
+    .service-capture-fixture input{margin-top:2px;accent-color:var(--acid)}
+    .service-capture-fixture strong{display:block}.service-capture-fixture small{display:block;color:var(--muted);margin-top:3px;line-height:1.4}
+  </style>
+</head>
+<body>
+  <div class="modal-backdrop">
+    <div class="modal-shell">
+      <liquid-glass class="glass"><div class="modal-content">
+        <div class="modal-heading"><div><h2>Save Capsule</h2><p>Full app · nested scroll validation</p></div><button class="icon-button">×</button></div>
+        <div class="modal-scroll"><div class="form-stack">
+          <label class="field-label">Name<input class="text-input hero-input" value="Portrait monitor restore"></label>
+          <label class="field-label">Optional note<textarea class="text-input" rows="2">Validate long Advanced content without losing the Save actions.</textarea></label>
+          <button class="advanced-toggle"><span>Advanced</span><span>⌃</span></button>
+          <div class="advanced-panel">
+            <div class="browser-integration-row"><div class="browser-integration-copy"><span>●</span><div><strong>Firefox / Zen integration</strong><small>Connected · fresh browser tab state is available.</small></div></div></div>
+            <label class="service-capture-fixture"><input type="checkbox" checked><span><strong>Pause & remember running terminal services</strong><small>Recommended. Turn this off to leave running services untouched while saving the rest of the workspace.</small></span></label>
+            <div class="field-label"><span>Ignore applications</span><small>The application chooser scrolls internally, and reaching its edge must not prevent the outer Save dialog from scrolling.</small></div>
+            <div class="app-check-list">
+              <label class="app-check-row"><input type="checkbox"><span><strong>Calculator</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Discord</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Explorer</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Firefox</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Notepad</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Paint</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>PowerShell</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Settings</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Spotify</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Task Manager</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Visual Studio Code</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Windows Terminal</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Zen</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>GitHub Desktop</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Postman</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Docker Desktop</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Figma</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Obsidian</strong></span></label>
+            </div>
+          </div>
+          <div class="safety-note"><span>✓</span><span>Running terminal services will be paused safely, remembered, and made available for restart during restore.</span></div>
+          <div class="modal-actions"><button class="secondary-button">Cancel</button><button class="primary-button">Save Capsule</button></div>
+        </div></div>
+      </div></liquid-glass>
+    </div>
+  </div>
+</body>
+</html>

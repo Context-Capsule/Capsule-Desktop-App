@@ -1,0 +1,59 @@
+/* The full desktop Save dialog can have many discovered applications. Keep the
+   chooser itself bounded so wheel/touchpad scrolling stays local to the list,
+   matching the compact tray experience without showing a browser scrollbar. */
+html[data-window-mode='full'] .app-check-list {
+  min-height: 0;
+  max-height: min(280px, 38vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* When the list reaches an edge, allow the same wheel gesture to continue
+     through the outer dialog instead of trapping the user inside this list. */
+  overscroll-behavior-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html[data-window-mode='full'] .app-check-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* The shared modal already has an internal .modal-scroll body, but the glass
+   shell can still be taller than the full-app viewport when Advanced contains
+   integration warnings, service controls and a long application chooser.
+   Give the backdrop a second, hidden-scrollbar safety net and make the body an
+   explicit shrinking flex item. This keeps the heading/actions reachable while
+   preserving wheel/touchpad scrolling across the whole dialog. */
+html[data-window-mode='full'] .modal-backdrop {
+  place-items: start center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html[data-window-mode='full'] .modal-backdrop::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+html[data-window-mode='full'] .modal-shell {
+  margin-block: auto;
+}
+
+html[data-window-mode='full'] .modal-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html[data-window-mode='full'] .modal-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
