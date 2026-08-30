@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ChevronDown, LoaderCircle, RefreshCw, ShieldCheck, Wifi, WifiOff } from '@lucide/svelte';
-  import { getLiveWorkspace, runOperation } from '../lib/bridge';
+  import { getApplications, runOperation } from '../lib/bridge';
   import Modal from './Modal.svelte';
 
   let { onclose, onsave } = $props<{
@@ -53,19 +53,18 @@
     loadingApps = true;
     appError = '';
     try {
-      // This deliberately matches the previously working behavior: discovery
-      // starts only when Advanced is opened. Do not impose an arbitrary timer
-      // on the mature live-workspace query; terminal/Docker discovery can take
-      // longer on a busy Windows machine even though application discovery is
-      // still progressing correctly.
-      const live = await getLiveWorkspace();
-      const applications = (live?.applications ?? [])
+      // Advanced only needs desktop application enumeration plus the recent
+      // Firefox/Zen semantic-state signal. Keep this read separate from the
+      // heavyweight live workspace scan (tools, Docker and terminals) so the
+      // chooser stays responsive without inventing another timeout.
+      const discovery = await getApplications();
+      const applications = (discovery?.applications ?? [])
         .filter((app: any) => typeof app?.name === 'string' && app.name.trim()) as DetectedApplication[];
       const internal = applications.find(isContextCapsuleApplication);
       internalSelector = internal?.name?.trim() ?? '';
       zenApp = applications.find(isZenApplication) ?? null;
       browserStateKnown = true;
-      firefoxFresh = Boolean(live?.browsers?.firefox);
+      firefoxFresh = Boolean(discovery?.browsers?.firefox);
       detectedApps = applications
         .filter((app) => !isContextCapsuleApplication(app))
         .sort((a, b) => displayApplicationName(a.name).localeCompare(displayApplicationName(b.name)));
