@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ChevronDown, LoaderCircle, RefreshCw, ShieldCheck, Wifi, WifiOff } from '@lucide/svelte';
-  import { getLiveWorkspace, runOperation } from '../lib/bridge';
+  import { getFrontendTrace, getLiveWorkspace, runOperation, traceFrontend } from '../lib/bridge';
   import Modal from './Modal.svelte';
 
   let { onclose, onsave } = $props<{
@@ -23,10 +23,15 @@
   let internalSelector = $state('');
   let repairBusy = $state(false);
   let browserMessage = $state('');
+  let debugStage = $state('idle');
+  let slowLoading = $state(false);
+  let diagnosticsCopied = $state(false);
 
   function isContextCapsuleApplication(app: DetectedApplication) {
     const appName = app.name.trim().toLowerCase();
-    const executable = (app.executable_path ?? '').replace(/\//g, '\\').toLowerCase();
+    const executable = typeof app.executable_path === 'string'
+      ? app.executable_path.replace(/\//g, '\\').toLowerCase()
+      : '';
     return appName === 'context capsule'
       || appName === 'context-capsule-desktop'
       || executable.endsWith('\\context-capsule-desktop.exe');
@@ -48,32 +53,91 @@
     }
   }
 
-  async function loadApplications(force = false) {
-    if (loadingApps || (!force && detectedApps.length)) return;
-    loadingApps = true;
-    appError = '';
+  function uniqueApplications(applications: DetectedApplication[]) {
+    const seen = new Set<string>();
+    const unique: DetectedApplication[] = [];
+    const duplicates: string[] = [];
+    for (const app of applications) {
+      const key = app.name.trim().toLocaleLowerCase();
+      if (seen.has(key)) {
+        duplicates.push(app.name.trim());
+        continue;
+      }
+      seen.add(key);
+      unique.push(app);
+    }
+    traceFrontend(
+      'save.apps.dedupe',
+      `input=${applications.length} unique=${unique.length} duplicates=${duplicates.length}${duplicates.length ? ` duplicate_names=${duplicates.join('|')}` : ''}`
+    );
+    return unique;
+  }
+
+  async function copyDiagnostics() {
+    diagnosticsCopied = false;
+    const lines = getFrontendTrace().slice(-50).map((entry) => `${entry.at} [${entry.scope}] ${entry.message}`);
+    lines.push(`${Date.now()} [save.apps.ui] stage=${debugStage} loading=${loadingApps} detected=${detectedApps.length} advanced=${advanced}`);
     try {
-      // Keep Advanced on the same mature live-workspace request that populated
-      // this chooser reliably before the newer standalone applications command
-      // was introduced. The native layer records begin/end timing in the
-      // dedicated application-discovery log, so a future stall is diagnosable
-      // without hiding it behind an arbitrary frontend timeout.
+      await navigator.clipboard.writeText(lines.join('\n'));
+      diagnosticsCopied = true;
+      traceFrontend('save.apps.diagnostics', `copied entries=${lines.length}`);
+    } catch (error) {
+      traceFrontend('save.apps.diagnostics', `copy-failed error=${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function loadApplications(force = false) {
+    if (loadingApps || (!force && detectedApps.length)) {
+      traceFrontend('save.apps.load', `skipped force=${force} loading=${loadingApps} detected=${detectedApps.length}`);
+      return;
+    }
+    const started = performance.now();
+    loadingApps = true;
+    slowLoading = false;
+    diagnosticsCopied = false;
+    appError = '';
+    debugStage = 'waiting for live workspace';
+    traceFrontend('save.apps.load', `begin force=${force} mode=${new URLSearchParams(window.location.search).get('mode') ?? 'quick'}`);
+    const slowTimer = window.setTimeout(() => {
+      slowLoading = true;
+      traceFrontend('save.apps.load', `slow stage=${debugStage} elapsed_ms=${Math.round(performance.now() - started)}`);
+    }, 10_000);
+    try {
       const live = await getLiveWorkspace();
-      const applications = (live?.applications ?? [])
-        .filter((app: any) => typeof app?.name === 'string' && app.name.trim()) as DetectedApplication[];
+      debugStage = 'live workspace returned';
+      const rawCount = Array.isArray(live?.applications) ? live.applications.length : -1;
+      traceFrontend('save.apps.load', `live-returned elapsed_ms=${Math.round(performance.now() - started)} raw_applications=${rawCount}`);
+
+      debugStage = 'validating applications';
+      const applications = uniqueApplications((Array.isArray(live?.applications) ? live.applications : [])
+        .filter((app: any) => typeof app?.name === 'string' && app.name.trim()) as DetectedApplication[]);
+      traceFrontend('save.apps.load', `validated applications=${applications.length} names=${applications.map((app) => app.name.trim()).join('|')}`);
+
+      debugStage = 'preparing application rows';
       const internal = applications.find(isContextCapsuleApplication);
       internalSelector = internal?.name?.trim() ?? '';
       zenApp = applications.find(isZenApplication) ?? null;
       browserStateKnown = true;
       firefoxFresh = Boolean(live?.browsers?.firefox);
-      detectedApps = applications
+      const visibleApps = applications
         .filter((app) => !isContextCapsuleApplication(app))
         .sort((a, b) => displayApplicationName(a.name).localeCompare(displayApplicationName(b.name)));
+      traceFrontend('save.apps.load', `rows-prepared visible=${visibleApps.length} internal=${Boolean(internalSelector)} zen=${Boolean(zenApp)} firefox_fresh=${firefoxFresh}`);
+
+      debugStage = 'assigning application rows';
+      detectedApps = visibleApps;
+      traceFrontend('save.apps.load', `rows-assigned detected=${detectedApps.length}`);
+      debugStage = 'render ready';
     } catch (error) {
       browserStateKnown = false;
       appError = error instanceof Error ? error.message : String(error);
+      debugStage = 'failed';
+      traceFrontend('save.apps.load', `failed elapsed_ms=${Math.round(performance.now() - started)} error=${appError}`);
     } finally {
+      window.clearTimeout(slowTimer);
       loadingApps = false;
+      slowLoading = false;
+      traceFrontend('save.apps.load', `finally elapsed_ms=${Math.round(performance.now() - started)} stage=${debugStage} detected=${detectedApps.length}`);
     }
   }
 
@@ -85,6 +149,7 @@
 
   function toggleAdvanced() {
     advanced = !advanced;
+    traceFrontend('save.apps.advanced', `toggle advanced=${advanced} loading=${loadingApps} detected=${detectedApps.length}`);
     if (advanced && !loadingApps && !detectedApps.length) void loadApplications();
   }
 
@@ -98,10 +163,6 @@
         const detail = result.stderr.split(/\r?\n/).filter(Boolean).slice(-2).join(' ');
         throw new Error(detail || 'Firefox / Zen native host repair failed.');
       }
-      // The Browser Extension intentionally retries native messaging every five
-      // seconds after a disconnect. Give that proven reconnect loop enough time
-      // before checking semantic state again instead of declaring repair failed
-      // after the old 900 ms delay.
       browserMessage = 'Native host repaired. Waiting for Zen to reconnect…';
       await new Promise((resolve) => setTimeout(resolve, 5_300));
       await loadApplications(true);
@@ -164,12 +225,15 @@
 
         <div class="field-label"><span>Ignore applications</span><small>Checked applications are intentionally excluded. Only application names are shown; Context Capsule itself is always excluded.</small></div>
         {#if loadingApps && !detectedApps.length}
-          <div class="inline-loading"><LoaderCircle size={15} class="spin"/> Detecting applications…</div>
+          <div class="inline-loading"><LoaderCircle size={15} class="spin"/> <span>Detecting applications…<small class="diagnostic-stage">Stage: {debugStage}</small></span></div>
+          {#if slowLoading}
+            <div class="inline-warning"><span>Discovery is still waiting at “{debugStage}”.</span><button class="text-button" onclick={copyDiagnostics}>{diagnosticsCopied ? 'Copied' : 'Copy diagnostics'}</button></div>
+          {/if}
         {:else if appError}
-          <div class="inline-warning app-discovery-error"><span>{appError}</span><button class="text-button" onclick={() => loadApplications(true)}>Retry</button></div>
+          <div class="inline-warning app-discovery-error"><span>{appError}</span><button class="text-button" onclick={() => loadApplications(true)}>Retry</button><button class="text-button" onclick={copyDiagnostics}>{diagnosticsCopied ? 'Copied' : 'Copy diagnostics'}</button></div>
         {:else if detectedApps.length}
           <div class="app-check-list">
-            {#each detectedApps as app (app.name)}
+            {#each detectedApps as app}
               <label class="app-check-row">
                 <input
                   type="checkbox"
@@ -193,3 +257,13 @@
     </div>
   </div>
 </Modal>
+
+<style>
+  .diagnostic-stage {
+    display: block;
+    margin-top: 2px;
+    opacity: .7;
+    font-size: 10px;
+    font-weight: 500;
+  }
+</style>
