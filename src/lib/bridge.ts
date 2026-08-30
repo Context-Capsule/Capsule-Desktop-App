@@ -12,9 +12,57 @@ import type {
 
 export const DESKTOP_API_VERSION = 1;
 const REQUIRED_DESKTOP_FEATURES = ['live-workspace', 'services', 'log-paths'];
+const FRONTEND_TRACE_KEY = 'context-capsule:frontend-trace:v1';
+const FRONTEND_TRACE_LIMIT = 80;
+
+type FrontendTraceEntry = {
+  at: number;
+  scope: string;
+  message: string;
+};
+
+export function traceFrontend(scope: string, message: string) {
+  const entry: FrontendTraceEntry = {
+    at: Date.now(),
+    scope: scope.slice(0, 80),
+    message: message.slice(0, 800)
+  };
+  console.info(`[ContextCapsule:${entry.scope}] ${entry.message}`);
+  try {
+    const current = JSON.parse(localStorage.getItem(FRONTEND_TRACE_KEY) ?? '[]');
+    const entries = Array.isArray(current) ? current.slice(-(FRONTEND_TRACE_LIMIT - 1)) : [];
+    entries.push(entry);
+    localStorage.setItem(FRONTEND_TRACE_KEY, JSON.stringify(entries));
+  } catch {
+    // Diagnostics must never interfere with the product path they observe.
+  }
+}
+
+export function getFrontendTrace(): FrontendTraceEntry[] {
+  try {
+    const current = JSON.parse(localStorage.getItem(FRONTEND_TRACE_KEY) ?? '[]');
+    return Array.isArray(current) ? current : [];
+  } catch {
+    return [];
+  }
+}
 
 export async function queryDesktop<T>(action: string, args: string[] = []): Promise<T> {
-  return invoke<T>('query_desktop', { action, args });
+  const started = performance.now();
+  traceFrontend('bridge.invoke', `begin action=${action} args=${args.length}`);
+  try {
+    const value = await invoke<T>('query_desktop', { action, args });
+    const elapsed = Math.round(performance.now() - started);
+    const appCount = action === 'live' && value && typeof value === 'object' && Array.isArray((value as any).applications)
+      ? (value as any).applications.length
+      : null;
+    traceFrontend('bridge.invoke', `resolved action=${action} elapsed_ms=${elapsed}${appCount === null ? '' : ` applications=${appCount}`}`);
+    return value;
+  } catch (error) {
+    const elapsed = Math.round(performance.now() - started);
+    traceFrontend('bridge.invoke', `rejected action=${action} elapsed_ms=${elapsed} error=${error instanceof Error ? error.message : String(error)}`);
+    throw error;
+  }
 }
 
 export async function contract(): Promise<DesktopContract> {
