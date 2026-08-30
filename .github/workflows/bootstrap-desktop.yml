@@ -53,7 +53,7 @@ jobs:
           $package = Get-Content -Raw package.json | ConvertFrom-Json
           foreach ($dependency in @{
             '@types/node' = '^24.3.0'
-            'esbuild' = '^0.25.10'
+            'esbuild' = '^0.28.0'
           }.GetEnumerator()) {
             if ($package.devDependencies.PSObject.Properties[$dependency.Key]) {
               $package.devDependencies.($dependency.Key) = $dependency.Value
