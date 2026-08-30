@@ -1,23 +1,32 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    collections::{HashMap, HashSet},
     env, fs,
     io::Write,
     path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    AppHandle, Emitter, Manager, Runtime, WindowEvent,
+    AppHandle, Emitter, Manager, Runtime, State, WindowEvent,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_positioner::{Position, WindowExt};
-use tauri_plugin_shell::{ShellExt, process::CommandEvent};
+use tauri_plugin_shell::{
+    ShellExt,
+    process::{CommandChild, CommandEvent},
+};
 
 const DESKTOP_API_VERSION: u32 = 1;
 const SERVICE_DECISIONS_ENV: &str = "CONTEXT_CAPSULE_SERVICE_DECISIONS_PATH";
+const CALLER_PID_ENV: &str = "CONTEXT_CAPSULE_CALLER_PID";
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 const MAX_CAPTURED_OUTPUT: usize = 4 * 1024 * 1024;
 static OPERATION_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -109,6 +118,7 @@ struct OperationResult {
     operation_id: String,
     code: i32,
     success: bool,
+    cancelled: bool,
     stdout: String,
     stderr: String,
 }
@@ -118,6 +128,18 @@ struct OperationResult {
 struct TrayAction {
     action: &'static str,
     nonce: u64,
+}
+
+struct ActiveOperation {
+    child: CommandChild,
+    save_name: Option<String>,
+    save_existed: bool,
+}
+
+#[derive(Default)]
+struct ActiveOperations {
+    children: Mutex<HashMap<String, ActiveOperation>>,
+    cancelled: Mutex<HashSet<String>>,
 }
 
 #[tauri::command]
@@ -187,17 +209,41 @@ async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Res
         .ok_or_else(|| "desktop API response did not contain data".to_owned())
 }
 
+async fn capsule_exists(app: &AppHandle, name: &str) -> Result<bool, String> {
+    let overview = desktop_api_call(app, "overview", &[]).await?;
+    Ok(overview
+        .get("capsules")
+        .and_then(Value::as_array)
+        .is_some_and(|capsules| {
+            capsules.iter().any(|capsule| {
+                capsule
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| value.eq_ignore_ascii_case(name))
+            })
+        }))
+}
+
 #[tauri::command]
 async fn run_operation(
     app: AppHandle,
+    active: State<'_, ActiveOperations>,
     request: OperationRequest,
 ) -> Result<OperationResult, String> {
     let operation_id = next_operation_id();
     let (program, args) = operation_command(&request)?;
     let decision_file = write_restore_decision_file(&request, &operation_id)?;
     let working_directory = preferred_operation_directory(&app, &request).await;
+    let save_name = match &request {
+        OperationRequest::Save { name, .. } => Some(name.clone()),
+        _ => None,
+    };
+    let save_existed = match save_name.as_deref() {
+        Some(name) => capsule_exists(&app, name).await.unwrap_or(true),
+        None => false,
+    };
     append_app_log(format!(
-        "operation.begin id={operation_id} program={program} args={args:?} decision_file={}",
+        "operation.begin id={operation_id} program={program} args={args:?} decision_file={} save_existed={save_existed}",
         decision_file.is_some()
     ));
     emit_operation(
@@ -215,6 +261,14 @@ async fn run_operation(
             format!("required Context Capsule sidecar '{program}' is unavailable: {error}")
         })?
         .args(args);
+    if matches!(request, OperationRequest::Save { .. } | OperationRequest::Update { .. }) {
+        // The GUI invokes the mature worker directly for save/update. Passing
+        // the desktop PID lets --cli-force walk the real process ancestry and
+        // exclude the terminal that launched `tauri dev`, exactly like a manual
+        // CLI invocation excludes its own shell. This prevents the desktop app
+        // from trying to Ctrl+C the development terminal that is hosting it.
+        command = command.env(CALLER_PID_ENV, std::process::id().to_string());
+    }
     if let Some(path) = working_directory.as_ref() {
         append_app_log(format!("operation.cwd id={operation_id} path={:?}", path));
         command = command.current_dir(path);
@@ -222,12 +276,25 @@ async fn run_operation(
     if let Some(path) = decision_file.as_ref() {
         command = command.env(SERVICE_DECISIONS_ENV, path.to_string_lossy().to_string());
     }
-    let (mut rx, _child) = command.spawn().map_err(|error| {
+    let (mut rx, child) = command.spawn().map_err(|error| {
         if let Some(path) = decision_file.as_ref() {
             let _ = fs::remove_file(path);
         }
         format!("could not start Context Capsule operation: {error}")
     })?;
+
+    active
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(
+            operation_id.clone(),
+            ActiveOperation {
+                child,
+                save_name,
+                save_existed,
+            },
+        );
 
     let mut stdout = String::new();
     let mut stderr = String::new();
@@ -264,21 +331,94 @@ async fn run_operation(
         }
     }
 
+    active
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&operation_id);
+    let cancelled = active
+        .cancelled
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&operation_id);
+
     if let Some(path) = decision_file.as_ref() {
         let _ = fs::remove_file(path);
     }
-    let success = code == 0;
+    if cancelled {
+        code = 130;
+        push_bounded(&mut stderr, "Operation cancelled by user");
+    }
+    let success = code == 0 && !cancelled;
     append_app_log(format!(
-        "operation.complete id={operation_id} success={success} code={code} stderr_tail={:?}",
+        "operation.complete id={operation_id} success={success} cancelled={cancelled} code={code} stderr_tail={:?}",
         stderr.lines().rev().take(3).collect::<Vec<_>>()
     ));
     Ok(OperationResult {
         operation_id,
         code,
         success,
+        cancelled,
         stdout,
         stderr,
     })
+}
+
+#[tauri::command]
+async fn cancel_operation(
+    app: AppHandle,
+    active: State<'_, ActiveOperations>,
+    operation_id: String,
+) -> Result<(), String> {
+    let operation = active
+        .children
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&operation_id)
+        .ok_or_else(|| "operation is no longer running".to_owned())?;
+
+    active
+        .cancelled
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(operation_id.clone());
+
+    let cleanup_name = operation
+        .save_name
+        .clone()
+        .filter(|_| !operation.save_existed);
+    operation
+        .child
+        .kill()
+        .map_err(|error| format!("could not cancel Context Capsule operation: {error}"))?;
+    append_app_log(format!("operation.cancel id={operation_id}"));
+    emit_operation(
+        &app,
+        &operation_id,
+        "status",
+        "Cancellation requested",
+        "Cancelling",
+    );
+
+    // Save without --force can only create a new capsule. If cancellation races
+    // the final SQLite commit, remove that new capsule after the worker is
+    // terminated. Existing capsules are never deleted by this cleanup path.
+    if let Some(name) = cleanup_name {
+        thread::sleep(Duration::from_millis(180));
+        match app.shell().sidecar("capsule-agent-worker") {
+            Ok(command) => {
+                let output = command.args(["delete", &name]).output().await;
+                append_app_log(format!(
+                    "operation.cancel cleanup id={operation_id} capsule={name:?} result={:?}",
+                    output.as_ref().map(|value| value.status.code())
+                ));
+            }
+            Err(error) => append_app_log(format!(
+                "operation.cancel cleanup id={operation_id} capsule={name:?} sidecar-error={error}"
+            )),
+        }
+    }
+    Ok(())
 }
 
 fn operation_command(request: &OperationRequest) -> Result<(&'static str, Vec<String>), String> {
@@ -297,7 +437,7 @@ fn operation_command(request: &OperationRequest) -> Result<(&'static str, Vec<St
             for app in ignore_apps.iter().filter(|app| !app.trim().is_empty()) {
                 args.extend(["--ignore-app".to_owned(), app.trim().to_owned()]);
             }
-            "capsule"
+            "capsule-agent-worker"
         }
         OperationRequest::Update { name, ignore_apps } => {
             require_nonempty("capsule name", name)?;
@@ -313,7 +453,7 @@ fn operation_command(request: &OperationRequest) -> Result<(&'static str, Vec<St
             for app in ignore_apps.iter().filter(|app| !app.trim().is_empty()) {
                 args.extend(["--ignore-app".to_owned(), app.trim().to_owned()]);
             }
-            "capsule"
+            "capsule-agent-worker"
         }
         OperationRequest::Restore {
             reference,
@@ -329,11 +469,9 @@ fn operation_command(request: &OperationRequest) -> Result<(&'static str, Vec<St
             for selector in only.iter().filter(|value| !value.trim().is_empty()) {
                 args.extend(["--only".to_owned(), selector.trim().to_owned()]);
             }
-            // Restore uses the compatibility worker directly. The public CLI
-            // deliberately skips Ask services when stdin is not a TTY; a GUI
-            // process is non-interactive by definition. The desktop backend
-            // supplies the worker with the same validated decision-file format
-            // that the public CLI normally creates after prompting.
+            // Restore uses the compatibility worker directly. The desktop
+            // backend supplies the worker with the same validated decision-file
+            // format that the public CLI normally creates after prompting.
             let _ = decisions;
             "capsule-agent-worker"
         }
@@ -782,6 +920,7 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
 
 pub fn run() {
     let builder = tauri::Builder::default()
+        .manage(ActiveOperations::default())
         // Must remain first: Tauri documents this ordering requirement.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Windows may race an autostart launch with a user launch. An
@@ -802,6 +941,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             query_desktop,
             run_operation,
+            cancel_operation,
             show_main_window,
             hide_quick_panel,
             quit_application,
@@ -999,12 +1139,25 @@ mod tests {
     }
 
     #[test]
+    fn save_uses_service_safe_worker_path() {
+        let request = OperationRequest::Save {
+            name: "demo".to_owned(),
+            note: None,
+            ignore_apps: vec![],
+        };
+        let (program, args) = operation_command(&request).unwrap();
+        assert_eq!(program, "capsule-agent-worker");
+        assert_eq!(args, ["save", "demo", "--cli-force"]);
+    }
+
+    #[test]
     fn update_uses_service_safe_cli_force_path() {
         let request = OperationRequest::Update {
             name: "demo".to_owned(),
             ignore_apps: vec!["Zen Browser".to_owned()],
         };
-        let (_, args) = operation_command(&request).unwrap();
+        let (program, args) = operation_command(&request).unwrap();
+        assert_eq!(program, "capsule-agent-worker");
         assert_eq!(
             args,
             [
