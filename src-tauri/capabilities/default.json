@@ -6,16 +6,6 @@
   "permissions": [
     "core:default",
     "autostart:default",
-    "notification:default",
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        {
-          "name": "binaries/capsule",
-          "sidecar": true,
-          "args": ["desktop", "live"]
-        }
-      ]
-    }
+    "notification:default"
   ]
 }
