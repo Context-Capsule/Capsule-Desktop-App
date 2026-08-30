@@ -5,13 +5,14 @@
 
   let { onclose, onsave } = $props<{
     onclose: () => void;
-    onsave: (payload: { name: string; note: string; ignoreApps: string[] }) => void;
+    onsave: (payload: { name: string; note: string; ignoreApps: string[]; captureServices: boolean }) => void;
   }>();
 
   type DetectedApplication = { name: string; executable_path?: string | null };
 
   let name = $state('');
   let note = $state('');
+  let captureServices = $state(true);
   let advanced = $state(false);
   let detectedApps = $state<DetectedApplication[]>([]);
   let ignoredApps = $state<string[]>([]);
@@ -189,7 +190,7 @@
       ...ignoredApps,
       ...(internalSelector ? [internalSelector] : [])
     ]));
-    onsave({ name: clean, note: note.trim(), ignoreApps: effectiveIgnored });
+    onsave({ name: clean, note: note.trim(), ignoreApps: effectiveIgnored, captureServices });
   };
 </script>
 
@@ -223,6 +224,14 @@
           {#if browserMessage}<div class="inline-warning browser-message">{browserMessage}</div>{/if}
         {/if}
 
+        <label class="service-capture-row">
+          <input type="checkbox" bind:checked={captureServices} />
+          <span>
+            <strong>Pause & remember running terminal services</strong>
+            <small>Recommended. Context Capsule briefly stops running terminal services so their exact commands can be restored later. Turn this off to leave them running and save the rest of the workspace without service restart capture.</small>
+          </span>
+        </label>
+
         <div class="field-label"><span>Ignore applications</span><small>Checked applications are intentionally excluded. Only application names are shown; Context Capsule itself is always excluded.</small></div>
         {#if loadingApps && !detectedApps.length}
           <div class="inline-loading"><LoaderCircle size={15} class="spin"/> <span>Detecting applications…<small class="diagnostic-stage">Stage: {debugStage}</small></span></div>
@@ -250,7 +259,7 @@
       </div>
     {/if}
 
-    <div class="safety-note"><ShieldCheck size={16}/><span>Running terminal services are captured using the CLI's safe force-save transaction. Browser safety is never bypassed silently.</span></div>
+    <div class="safety-note"><ShieldCheck size={16}/><span>{captureServices ? 'Running terminal services will be paused safely, remembered, and made available for restart during restore.' : 'Running terminal services will be left untouched. This capsule will not save service restart commands.'}</span></div>
     <div class="modal-actions">
       <button class="secondary-button" onclick={onclose}>Cancel</button>
       <button class="primary-button" disabled={!name.trim()} onclick={submit}>Save Capsule</button>
@@ -265,5 +274,34 @@
     opacity: .7;
     font-size: 10px;
     font-weight: 500;
+  }
+
+  .service-capture-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 12px;
+    padding: 10px;
+    border-radius: 11px;
+    border: 1px solid rgba(234,255,54,.10);
+    background: rgba(234,255,54,.035);
+    cursor: pointer;
+  }
+  .service-capture-row input {
+    flex: none;
+    margin-top: 2px;
+    accent-color: var(--acid);
+  }
+  .service-capture-row span { min-width: 0; }
+  .service-capture-row strong {
+    display: block;
+    font-size: 9.5px;
+  }
+  .service-capture-row small {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 8px;
+    line-height: 1.4;
   }
 </style>
