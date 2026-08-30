@@ -42,9 +42,17 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
-
       - name: Generate application icons
         run: npm run icons:generate
+
+      - name: Validate Windows branding preparation
+        shell: pwsh
+        run: |
+          # Use an icon generated in this clean checkout as the explicit source.
+          # This tests the same local Tauri JS invocation and path-with-spaces
+          # behavior as production without requiring another private repository.
+          $env:CAPSULE_BRAND_ASSET = Join-Path $PWD 'src-tauri\icons\icon.png'
+          npm run brand:prepare
 
       - name: Source and packaging contract tests
         run: npm test
