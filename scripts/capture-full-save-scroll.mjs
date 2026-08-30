@@ -122,7 +122,6 @@ await rm(profile, { recursive: true, force: true });
 const edgeProcess = spawn(edge, [
   '--headless=new',
   '--disable-gpu',
-  '--hide-scrollbars',
   `--remote-debugging-port=${port}`,
   `--user-data-dir=${profile}`,
   'about:blank'
@@ -208,7 +207,7 @@ try {
     }
 
     await screenshot(cdp, join(outputDir, 'save-ignore-scroll-bottom.png'));
-    console.log(`full-save-scroll: client=${metrics.clientHeight}px scroll=${metrics.scrollHeight}px maxScroll=${after.maxScroll}px; hidden scrollbar verified`);
+    console.log(`full-save-scroll: client=${metrics.clientHeight}px scroll=${metrics.scrollHeight}px maxScroll=${after.maxScroll}px; hidden scrollbar verified by CSS`);
   } finally {
     cdp.close();
   }
