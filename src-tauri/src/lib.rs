@@ -261,7 +261,10 @@ async fn run_operation(
             format!("required Context Capsule sidecar '{program}' is unavailable: {error}")
         })?
         .args(args);
-    if matches!(request, OperationRequest::Save { .. } | OperationRequest::Update { .. }) {
+    if matches!(
+        request,
+        OperationRequest::Save { .. } | OperationRequest::Update { .. }
+    ) {
         // The GUI invokes the mature worker directly for save/update. Passing
         // the desktop PID lets --cli-force walk the real process ancestry and
         // exclude the terminal that launched `tauri dev`, exactly like a manual
@@ -441,9 +444,6 @@ fn operation_command(request: &OperationRequest) -> Result<(&'static str, Vec<St
         }
         OperationRequest::Update { name, ignore_apps } => {
             require_nonempty("capsule name", name)?;
-            // A desktop update is a force-save of the same capsule name. This
-            // deliberately reuses the proven service-safe save transaction
-            // instead of introducing a second terminal interruption path.
             args.extend([
                 "save".to_owned(),
                 name.clone(),
@@ -469,9 +469,6 @@ fn operation_command(request: &OperationRequest) -> Result<(&'static str, Vec<St
             for selector in only.iter().filter(|value| !value.trim().is_empty()) {
                 args.extend(["--only".to_owned(), selector.trim().to_owned()]);
             }
-            // Restore uses the compatibility worker directly. The desktop
-            // backend supplies the worker with the same validated decision-file
-            // format that the public CLI normally creates after prompting.
             let _ = decisions;
             "capsule-agent-worker"
         }
@@ -570,8 +567,6 @@ async fn preferred_operation_directory(
         .cloned()
         .unwrap_or_default();
 
-    // Prefer the local terminal that is actively doing work. This most closely
-    // mirrors running `capsule save` from the project terminal by hand.
     for session in sessions
         .iter()
         .filter(|session| !session["foreground_command"].is_null())
@@ -581,8 +576,6 @@ async fn preferred_operation_directory(
         }
     }
 
-    // If no active command exists, a local VS Code workspace is the next most
-    // meaningful project root. Remote/WSL URIs are intentionally ignored.
     if let Some(folders) = live
         .pointer("/editor/workspaceFolders")
         .and_then(Value::as_array)
@@ -596,8 +589,6 @@ async fn preferred_operation_directory(
         }
     }
 
-    // Finally use an idle local terminal directory. Invalid, stale, WSL and
-    // inaccessible paths fail closed because `is_dir()` must succeed locally.
     for session in &sessions {
         if let Some(path) = existing_local_directory(session.get("working_directory")) {
             return Some(path);
@@ -921,11 +912,7 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let builder = tauri::Builder::default()
         .manage(ActiveOperations::default())
-        // Must remain first: Tauri documents this ordering requirement.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // Windows may race an autostart launch with a user launch. An
-            // autostart duplicate should stay silent; an explicit second
-            // launch should focus the already-running full window.
             if !args.iter().any(|arg| arg == "--autostart") {
                 let _ = show_main_window(app.clone(), None, None);
             }
