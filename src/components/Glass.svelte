@@ -15,7 +15,7 @@
   blur="5"
   saturation="145"
   displace={interactive ? '3' : '2'}
-  style="display:block;width:100%;height:100%;"
+  style={`display:block;width:100%;height:100%;border-radius:${radius}px;`}
 >
   {@render children()}
 </liquid-glass>
