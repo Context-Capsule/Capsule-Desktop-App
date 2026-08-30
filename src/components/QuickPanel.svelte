@@ -13,7 +13,7 @@
     busy?: boolean;
     refreshVersion?: number;
     trayAction?: { action: 'save' | 'restore-last'; nonce: number } | null;
-    onSave: (payload: { name: string; note: string; ignoreApps: string[] }) => void;
+    onSave: (payload: { name: string; note: string; ignoreApps: string[]; captureServices: boolean }) => void;
     onRestore: (payload: { capsule: CapsuleSummary; reference?: string; replace: boolean; decisions: OperationDecision[]; only?: string[] }) => void;
     onOpenCapsule: (capsule: CapsuleSummary) => void;
   }>();
@@ -125,4 +125,3 @@
 {#if restoreCapsule}
   <RestoreModal capsule={restoreCapsule} reference={`${restoreCapsule.name}@${restoreCapsule.current_revision}`} services={restoreServices} defaultReplace={settings.restoreMode === 'replace'} onclose={() => restoreCapsule = null} onrestore={(payload) => { const capsule = restoreCapsule!; restoreCapsule = null; onRestore({ capsule, reference: `${capsule.name}@${capsule.current_revision}`, ...payload }); }} />
 {/if}
-
