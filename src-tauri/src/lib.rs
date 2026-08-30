@@ -160,7 +160,9 @@ async fn query_desktop(app: AppHandle, action: String, args: Vec<String>) -> Res
 
 async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Result<Value, String> {
     let allowed = match action {
-        "contract" | "overview" | "live" | "health" | "log-paths" => args.is_empty(),
+        "contract" | "overview" | "applications" | "live" | "health" | "log-paths" => {
+            args.is_empty()
+        }
         "capsule" | "history" | "services" => args.len() == 1,
         "diff" => args.len() == 2,
         _ => false,
