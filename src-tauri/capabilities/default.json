@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-capability",
+  "description": "Minimal frontend permissions for Context Capsule desktop windows.",
+  "windows": ["quick", "main"],
+  "permissions": [
+    "core:default",
+    "autostart:default",
+    "notification:default"
+  ]
+}

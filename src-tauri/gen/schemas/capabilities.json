@@ -1,0 +1,1 @@
+{"desktop-capability":{"identifier":"desktop-capability","description":"Minimal frontend permissions for Context Capsule desktop windows.","local":true,"windows":["quick","main"],"permissions":["core:default","autostart:default","notification:default"]}}

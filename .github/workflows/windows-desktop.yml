@@ -1,0 +1,93 @@
+name: Windows Desktop
+
+on:
+  push:
+    branches:
+      - feature/tauri-desktop-app-20260830
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-windows:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    steps:
+      - name: Verify POTUS runner
+        shell: pwsh
+        run: |
+          if ('${{ runner.name }}' -ne 'POTUS') { throw "Expected runner POTUS, got '${{ runner.name }}'" }
+
+      - uses: actions/checkout@v4
+
+      - name: Ensure stable Rust toolchain
+        shell: pwsh
+        run: |
+          Get-Command rustup -ErrorAction Stop | Format-List Source
+          rustup toolchain install stable --component rustfmt --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { throw 'rustup stable install failed' }
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+
+      - name: Generate application icons
+        run: npm run icons:generate
+
+      - name: Source and packaging contract tests
+        run: npm test
+
+      - name: Svelte and TypeScript checks
+        run: npm run check
+
+      - name: Frontend production build
+        run: npm run build
+
+      - name: Prepare non-production CI sidecar placeholders
+        shell: pwsh
+        run: |
+          $triple = rustc --print host-tuple
+          if ($LASTEXITCODE -ne 0 -or -not $triple) {
+            $host = rustc -Vv | Select-String '^host:' | ForEach-Object { $_.Line.Split(':', 2)[1].Trim() }
+            $triple = $host
+          }
+          if (-not $triple) { throw 'Could not determine Rust target triple' }
+          $dir = Join-Path $PWD 'src-tauri\binaries'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          foreach ($name in @('capsule','capsule-agent-worker','capsule-firefox-host','capsule-chrome-host')) {
+            # These placeholders exist only so tauri-build can validate its externalBin configuration.
+            # They are never uploaded or treated as a production installer/runtime.
+            Set-Content -NoNewline -Path (Join-Path $dir "$name-$triple.exe") -Value 'CI packaging placeholder'
+          }
+
+      - name: Rust format
+        shell: pwsh
+        run: cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
+
+      - name: Tauri backend tests
+        run: cargo test --manifest-path src-tauri\Cargo.toml
+
+      - name: Tauri backend check
+        run: cargo check --manifest-path src-tauri\Cargo.toml --all-targets
+
+      - name: Compile Tauri application without bundling placeholders
+        run: npm run tauri -- build --no-bundle
+
+      - name: Explain runtime boundary
+        shell: pwsh
+        run: |
+          Write-Host 'Desktop native/frontend validation passed.'
+          Write-Host 'This workflow intentionally does not manufacture a production installer with placeholder sidecars.'
+          Write-Host 'Production packaging requires real release binaries from Capsule-CLI: capsule, agent worker, Firefox/Zen host, and Chrome host.'
