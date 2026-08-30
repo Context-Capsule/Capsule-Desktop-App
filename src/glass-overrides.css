@@ -176,3 +176,156 @@ html[data-window-mode='quick'] .operation-card { background: rgba(7,9,6,.94) !im
 .browser-integration-copy small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.35; }
 .browser-message { margin: -3px 0 10px; line-height: 1.4; }
 .app-discovery-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Modal is a shared viewport-bounded primitive. The heading stays stable while
+   only its body scrolls, so every Save/Restore/Note/Prestart state keeps its
+   actions reachable without painting a browser scrollbar outside the glass. */
+.modal-shell {
+  min-width: 0;
+  max-height: calc(100vh - 44px);
+}
+.modal-shell > liquid-glass {
+  display: block;
+  max-height: inherit;
+}
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: inherit;
+  overflow: hidden;
+}
+.modal-heading {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.modal-heading > div { min-width: 0; }
+.modal-heading h2,
+.modal-heading p { overflow-wrap: anywhere; }
+.modal-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.modal-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+.app-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 9px;
+}
+.app-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 9px;
+  background: rgba(0,0,0,.12);
+  font-size: 9px;
+}
+.app-check-row input { flex: none; accent-color: var(--acid); }
+.app-check-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.inline-loading,
+.inline-warning,
+.inline-muted { font-size: 8.5px; line-height: 1.4; }
+.inline-loading { display: flex; align-items: center; gap: 7px; color: var(--muted); padding: 9px 0; }
+.inline-warning { color: #e3d794; }
+.inline-muted { color: var(--muted); padding: 9px 0; }
+.text-button { border: 0; background: none; color: var(--acid); cursor: pointer; padding: 2px 0; font-size: 8.5px; }
+
+/* 340x440 tray window: center every modal as a unit, then constrain the unit
+   to the usable native viewport. Tall bodies scroll inside the rounded card;
+   the transparent native corners never receive a rectangular backdrop. */
+html[data-window-mode='quick'] .modal-backdrop {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 10px !important;
+  overflow: hidden !important;
+}
+html[data-window-mode='quick'] .modal-shell {
+  width: 100% !important;
+  max-width: calc(100vw - 20px) !important;
+  max-height: calc(100vh - 20px) !important;
+  margin: auto !important;
+  min-width: 0 !important;
+}
+html[data-window-mode='quick'] .modal-shell > liquid-glass {
+  max-height: calc(100vh - 20px) !important;
+}
+html[data-window-mode='quick'] .modal-content {
+  max-height: calc(100vh - 20px) !important;
+  padding: 14px !important;
+}
+html[data-window-mode='quick'] .modal-heading {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+html[data-window-mode='quick'] .modal-heading h2 { font-size: 15px; }
+html[data-window-mode='quick'] .modal-heading p { margin-top: 3px; font-size: 8.8px; line-height: 1.35; }
+html[data-window-mode='quick'] .modal-heading .icon-button { width: 28px; height: 28px; flex: none; }
+html[data-window-mode='quick'] .modal-scroll {
+  max-width: 100%;
+  overscroll-behavior: contain;
+}
+html[data-window-mode='quick'] .form-stack { gap: 10px; }
+html[data-window-mode='quick'] .advanced-panel { padding: 10px; }
+html[data-window-mode='quick'] .modal-actions { flex-wrap: wrap; }
+html[data-window-mode='quick'] .modal-actions > button { flex: 1 1 auto; min-width: 0; }
+html[data-window-mode='quick'] .browser-integration-row {
+  align-items: stretch;
+  flex-direction: column;
+}
+html[data-window-mode='quick'] .browser-integration-row .secondary-button { align-self: flex-start; }
+html[data-window-mode='quick'] .app-discovery-error { align-items: flex-start; }
+html[data-window-mode='quick'] .restore-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html[data-window-mode='quick'] .service-choice {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
+}
+html[data-window-mode='quick'] .service-choice code,
+html[data-window-mode='quick'] .service-choice-copy span { max-width: 100%; }
+html[data-window-mode='quick'] .compact-select { width: 100%; max-width: none; }
+html[data-window-mode='quick'] .resource-grid { grid-template-columns: 1fr; }
+
+/* Onboarding bypasses Modal.svelte, so give it the same quick-window contract. */
+html[data-window-mode='quick'] .onboarding-shell {
+  width: 100% !important;
+  max-width: calc(100vw - 20px) !important;
+  max-height: calc(100vh - 20px) !important;
+  margin: auto !important;
+}
+html[data-window-mode='quick'] .onboarding-shell > liquid-glass {
+  display: block;
+  max-height: calc(100vh - 20px) !important;
+}
+html[data-window-mode='quick'] .onboarding-card {
+  min-height: 0 !important;
+  max-height: calc(100vh - 20px) !important;
+  padding: 22px 18px 16px !important;
+  justify-content: flex-start !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html[data-window-mode='quick'] .onboarding-card::-webkit-scrollbar { width: 0; height: 0; display: none; }
+html[data-window-mode='quick'] .onboarding-progress { left: 18px; right: 18px; top: 14px; }
+html[data-window-mode='quick'] .onboarding-visual {
+  width: 50px;
+  height: 50px;
+  margin: 10px 0 14px;
+  border-radius: 17px;
+}
+html[data-window-mode='quick'] .onboarding-card h1 { font-size: 20px; margin: 7px 0 9px; }
+html[data-window-mode='quick'] .onboarding-card > p { margin-bottom: 14px; }
+html[data-window-mode='quick'] .onboarding-toggle,
+html[data-window-mode='quick'] .integration-button { margin-bottom: 11px; padding: 10px; }
+html[data-window-mode='quick'] .onboarding-skip { right: 10px; top: 24px; }
