@@ -1,0 +1,57 @@
+<!doctype html>
+<html data-window-mode="full">
+<head>
+  <meta charset="utf-8">
+  <title>Context Capsule Full Save Scroll</title>
+  <link rel="stylesheet" href="../../src/app.css">
+  <link rel="stylesheet" href="../../src/glass-overrides.css">
+  <link rel="stylesheet" href="../../src/full-save-scroll.css">
+  <style>
+    html,body{width:1100px;height:760px;margin:0;overflow:hidden}
+    body{background:linear-gradient(135deg,#26322b,#101510 48%,#303a2a)}
+    liquid-glass{display:block;border-radius:24px}
+    .modal-backdrop{display:flex;align-items:center;justify-content:center}
+    .modal-shell{width:520px;max-width:calc(100vw - 48px)}
+    .modal-shell>liquid-glass{width:100%;border-radius:24px}
+  </style>
+</head>
+<body>
+  <div class="modal-backdrop">
+    <div class="modal-shell">
+      <liquid-glass class="glass"><div class="modal-content">
+        <div class="modal-heading"><div><h2>Save Capsule</h2><p>Full app · scroll validation</p></div><button class="icon-button">×</button></div>
+        <div class="modal-scroll"><div class="form-stack">
+          <label class="field-label">Name<input class="text-input hero-input" value="Portrait monitor restore"></label>
+          <button class="advanced-toggle"><span>Advanced</span><span>⌃</span></button>
+          <div class="advanced-panel">
+            <div class="browser-integration-row"><div class="browser-integration-copy"><span>●</span><div><strong>Firefox / Zen integration</strong><small>Connected · fresh browser tab state is available.</small></div></div></div>
+            <div class="field-label"><span>Ignore applications</span><small>Scroll this list without showing a browser scrollbar.</small></div>
+            <div class="app-check-list">
+              <label class="app-check-row"><input type="checkbox"><span><strong>Calculator</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Discord</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Explorer</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Firefox</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Notepad</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Paint</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>PowerShell</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Settings</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Spotify</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Task Manager</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Visual Studio Code</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Windows Terminal</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Zen</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>GitHub Desktop</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Postman</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Docker Desktop</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Figma</strong></span></label>
+              <label class="app-check-row"><input type="checkbox"><span><strong>Obsidian</strong></span></label>
+            </div>
+          </div>
+          <div class="safety-note"><span>✓</span><span>The application chooser scrolls independently while Save actions remain reachable.</span></div>
+          <div class="modal-actions"><button class="secondary-button">Cancel</button><button class="primary-button">Save Capsule</button></div>
+        </div></div>
+      </div></liquid-glass>
+    </div>
+  </div>
+</body>
+</html>
