@@ -1,0 +1,64 @@
+/* Native-window translucency and compact tray-panel tuning.
+   Tauri supplies Windows Acrylic; these alpha surfaces deliberately avoid
+   repainting the WebView as an opaque rectangle on top of it. */
+body::before {
+  inset: -18%;
+  background:
+    radial-gradient(circle at 14% 8%, rgba(228,255,46,.10), transparent 24%),
+    radial-gradient(circle at 85% 76%, rgba(165,255,38,.055), transparent 24%),
+    radial-gradient(circle at 54% 40%, rgba(255,255,255,.028), transparent 30%),
+    linear-gradient(142deg, rgba(17,21,13,.68) 0%, rgba(6,7,6,.62) 46%, rgba(11,13,8,.68) 100%);
+}
+
+.quick-root { padding: 6px; }
+.quick-panel {
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(11,14,9,.42), rgba(5,7,5,.54));
+  backdrop-filter: blur(12px) saturate(1.08);
+}
+.quick-header { margin-bottom: 12px; }
+.quick-panel .brand-lockup { gap: 8px; }
+.quick-panel .brand-lockup strong { font-size: 12px; }
+.quick-panel .brand-lockup span { font-size: 8.5px; }
+.quick-panel .status-pill { padding: 5px 7px; font-size: 9px; }
+.quick-panel .save-hero {
+  min-height: 62px;
+  grid-template-columns: 36px 1fr auto;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+.quick-panel .save-icon { width: 34px; height: 34px; border-radius: 11px; }
+.quick-panel .save-hero strong { font-size: 13px; }
+.quick-panel .save-hero small { font-size: 9.5px; }
+.quick-panel .quick-section-heading { margin: 13px 2px 8px; }
+.quick-panel .quick-capsules { gap: 6px; padding-bottom: 7px; }
+.quick-panel .capsule-card-shell,
+.quick-panel .capsule-card-shell.compact { min-height: 72px; }
+.quick-panel .capsule-card { padding: 9px 10px; }
+.quick-panel .capsule-icon { width: 30px; height: 30px; border-radius: 9px; }
+.quick-panel .metrics,
+.quick-panel .note { margin-top: 2px; font-size: 8.7px; }
+.quick-panel .restore-button { padding: 5px 7px; }
+.quick-panel .quick-footer { padding-top: 7px; gap: 3px; }
+.quick-panel .quick-footer button { min-height: 30px; font-size: 8.8px; }
+
+/* Use the exact Browser Extension artwork prepared by scripts/prepare-branding.mjs. */
+.brand-mark {
+  overflow: hidden;
+  background-color: rgba(234,255,54,.10);
+  background-image: url('/context-capsule-logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+.brand-mark > svg { opacity: 0; }
+
+/* Keep the large application readable while allowing Windows Acrylic to show
+   through the shell rather than covering it with an opaque application layer. */
+.full-root { background: transparent !important; }
+.sidebar {
+  background: linear-gradient(180deg, rgba(8,10,7,.64), rgba(5,7,5,.56)) !important;
+  backdrop-filter: blur(10px) saturate(1.06);
+}
+.full-content { background: rgba(5,7,5,.24) !important; }

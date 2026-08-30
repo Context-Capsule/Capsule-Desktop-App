@@ -73,16 +73,44 @@ test('autostart is tray-only while explicit launch opens the app', async () => {
   assert.ok(packageJson.dependencies['@tauri-apps/plugin-autostart']);
 });
 
-
-test('application icons are generated from one checked-in SVG source', async () => {
+test('desktop runs prepare the Browser Extension brand while CI keeps a checked-in icon fallback', async () => {
   const packageJson = JSON.parse(await read('package.json'));
   const gitignore = await read('.gitignore');
   const svg = await read('src-tauri/icons/icon.svg');
+  const branding = await read('scripts/prepare-branding.mjs');
   assert.equal(packageJson.scripts['icons:generate'], 'tauri icon src-tauri/icons/icon.svg');
-  assert.match(packageJson.scripts['tauri:dev'], /icons:generate/);
-  assert.match(packageJson.scripts['tauri:build'], /icons:generate/);
+  assert.equal(packageJson.scripts['icons:generate:brand'], 'tauri icon public/context-capsule-logo.png');
+  assert.match(packageJson.scripts['tauri:dev'], /brand:prepare/);
+  assert.match(packageJson.scripts['tauri:dev'], /icons:generate:brand/);
+  assert.match(packageJson.scripts['tauri:build'], /brand:prepare/);
+  assert.match(branding, /Capsule-Browser-Extension/);
+  assert.match(branding, /src.+popup.+capsule-bgless\.png/s);
   assert.match(svg, /#eaff36/i);
   assert.match(gitignore, /src-tauri\/icons\/icon\.ico/);
+});
+
+test('quick panel is compact and Windows surfaces use native acrylic transparency', async () => {
+  const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
+  const quick = config.app.windows.find((window) => window.label === 'quick');
+  const main = config.app.windows.find((window) => window.label === 'main');
+  const overrides = await read('src/glass-overrides.css');
+  assert.equal(quick.width, 380);
+  assert.equal(quick.height, 520);
+  assert.equal(quick.transparent, true);
+  assert.ok(quick.windowEffects.effects.includes('acrylic'));
+  assert.equal(main.transparent, true);
+  assert.ok(main.windowEffects.effects.includes('acrylic'));
+  assert.match(overrides, /rgba\(17,21,13,\.68\)/);
+  assert.match(overrides, /context-capsule-logo\.png/);
+  assert.doesNotMatch(overrides, /linear-gradient\([^;]*#060706/);
+});
+
+test('sidecar preparation validates the desktop API before copying runtime binaries', async () => {
+  const source = await read('scripts/prepare-sidecar.mjs');
+  assert.match(source, /\['desktop', 'contract'\]/);
+  assert.match(source, /desktopApiVersion = 1/);
+  assert.match(source, /cargo', \['build', '--release', '--bins'/);
+  assert.match(source, /CAPSULE_TEST_SKIP_API_PREFLIGHT/);
 });
 
 test('visual system uses an existing liquid-glass implementation', async () => {
@@ -91,6 +119,7 @@ test('visual system uses an existing liquid-glass implementation', async () => {
   const glass = await read('src/components/Glass.svelte');
   assert.ok(packageJson.dependencies['simple-liquid-glass']);
   assert.match(main, /simple-liquid-glass\/web-component/);
+  assert.match(main, /glass-overrides\.css/);
   assert.match(glass, /<liquid-glass/);
 });
 

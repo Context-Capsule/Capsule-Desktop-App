@@ -18,7 +18,12 @@ test('sidecar preparation copies all required binaries byte-for-byte', async () 
     const result = spawnSync(process.execPath, ['scripts/prepare-sidecar.mjs'], {
       cwd: root,
       encoding: 'utf8',
-      env: { ...process.env, CAPSULE_CLI_BIN: join(dir, `capsule${exe}`), CAPSULE_TARGET_TRIPLE: triple }
+      env: {
+        ...process.env,
+        CAPSULE_CLI_BIN: join(dir, `capsule${exe}`),
+        CAPSULE_TARGET_TRIPLE: triple,
+        CAPSULE_TEST_SKIP_API_PREFLIGHT: '1'
+      }
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     for (const [index, name] of names.entries()) {
@@ -37,10 +42,31 @@ test('sidecar preparation refuses a partial CLI build', async () => {
     const result = spawnSync(process.execPath, ['scripts/prepare-sidecar.mjs'], {
       cwd: root,
       encoding: 'utf8',
-      env: { ...process.env, CAPSULE_CLI_BIN: join(dir, `capsule${exe}`), CAPSULE_TARGET_TRIPLE: triple }
+      env: {
+        ...process.env,
+        CAPSULE_CLI_BIN: join(dir, `capsule${exe}`),
+        CAPSULE_TARGET_TRIPLE: triple,
+        CAPSULE_TEST_SKIP_API_PREFLIGHT: '1'
+      }
     });
     assert.notEqual(result.status, 0);
     assert.match(`${result.stderr}\n${result.stdout}`, /Required release binary is missing/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('sidecar preparation rejects a complete but incompatible CLI runtime', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'context-capsule-sidecars-stale-'));
+  try {
+    for (const name of names) await writeFile(join(dir, `${name}${exe}`), `stale:${name}\n`);
+    const result = spawnSync(process.execPath, ['scripts/prepare-sidecar.mjs'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, CAPSULE_CLI_BIN: join(dir, `capsule${exe}`), CAPSULE_TARGET_TRIPLE: triple }
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stderr}\n${result.stdout}`, /desktop API preflight/i);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

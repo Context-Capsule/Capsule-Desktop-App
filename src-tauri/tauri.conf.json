@@ -15,11 +15,14 @@
         "label": "quick",
         "title": "Context Capsule",
         "url": "/?mode=quick",
-        "width": 430,
-        "height": 620,
+        "width": 380,
+        "height": 520,
         "visible": false,
         "decorations": false,
         "transparent": true,
+        "windowEffects": {
+          "effects": ["acrylic"]
+        },
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false,
@@ -38,7 +41,11 @@
         "minHeight": 620,
         "visible": false,
         "resizable": true,
-        "center": true
+        "center": true,
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["acrylic"]
+        }
       }
     ],
     "security": {
