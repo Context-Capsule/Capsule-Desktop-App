@@ -1,0 +1,111 @@
+<!doctype html>
+<html data-window-mode="quick">
+<head>
+  <meta charset="utf-8">
+  <title>Context Capsule Quick States</title>
+  <link rel="stylesheet" href="../../src/app.css">
+  <link rel="stylesheet" href="../../src/glass-overrides.css">
+  <style>
+    html,body{width:340px;height:440px;margin:0;background:linear-gradient(135deg,#33404d,#111820 42%,#4b3040);overflow:hidden}
+    body{position:relative}
+    liquid-glass{display:block;border-radius:24px}
+    .modal-shell>liquid-glass,.onboarding-shell>liquid-glass{border-radius:24px}
+    .fixture-state{display:none}
+    .fixture-state.active{display:block}
+    .fake-icon{width:15px;height:15px;display:inline-grid;place-items:center;flex:none}
+    .operation-overlay{display:flex!important;align-items:center!important;justify-content:center!important;padding:12px!important}
+    .operation-shell{width:calc(100vw - 24px)!important;max-width:316px!important;margin:auto!important;align-self:center!important}
+    .operation-card{border-radius:22px}
+  </style>
+</head>
+<body>
+  <section id="save-loaded" class="fixture-state">
+    <div class="modal-backdrop">
+      <div class="modal-shell" style="max-width:460px">
+        <liquid-glass class="glass"><div class="modal-content">
+          <div class="modal-heading"><div><h2>Save Capsule</h2><p>Capture the workspace exactly where you are.</p></div><button class="icon-button">×</button></div>
+          <div class="modal-scroll"><div class="form-stack">
+            <label class="field-label">Name<input class="text-input hero-input" value="Context Capsule UI"></label>
+            <label class="field-label">Optional note<textarea class="text-input" rows="2">Validate the quick window with a deliberately long note that still remains inside the glass card.</textarea></label>
+            <button class="advanced-toggle"><span>Advanced</span><span>⌃</span></button>
+            <div class="advanced-panel">
+              <div class="browser-integration-row"><div class="browser-integration-copy"><span class="fake-icon">●</span><div><strong>Firefox / Zen integration</strong><small>Connected · fresh browser tab state is available.</small></div></div></div>
+              <div class="field-label"><span>Ignore applications</span><small>Checked applications are intentionally excluded. Only application names are shown; Context Capsule itself is always excluded.</small></div>
+              <div class="app-check-list">
+                <label class="app-check-row"><input type="checkbox"><span><strong>Discord</strong></span></label>
+                <label class="app-check-row"><input type="checkbox"><span><strong>Settings</strong></span></label>
+                <label class="app-check-row"><input type="checkbox"><span><strong>Visual Studio Code</strong></span></label>
+                <label class="app-check-row"><input type="checkbox"><span><strong>Windows Terminal</strong></span></label>
+                <label class="app-check-row"><input type="checkbox"><span><strong>Zen</strong></span></label>
+              </div>
+            </div>
+            <div class="safety-note"><span class="fake-icon">✓</span><span>Running terminal services are captured using the CLI's safe force-save transaction. Browser safety is never bypassed silently.</span></div>
+            <div class="modal-actions"><button class="secondary-button">Cancel</button><button class="primary-button">Save Capsule</button></div>
+          </div></div>
+        </div></liquid-glass>
+      </div>
+    </div>
+  </section>
+
+  <section id="save-error" class="fixture-state">
+    <div class="modal-backdrop">
+      <div class="modal-shell" style="max-width:460px">
+        <liquid-glass class="glass"><div class="modal-content">
+          <div class="modal-heading"><div><h2>Save Capsule</h2><p>Capture the workspace exactly where you are.</p></div><button class="icon-button">×</button></div>
+          <div class="modal-scroll"><div class="form-stack">
+            <label class="field-label">Name<input class="text-input hero-input" value="Retry state"></label>
+            <button class="advanced-toggle"><span>Advanced</span><span>⌃</span></button>
+            <div class="advanced-panel">
+              <div class="field-label"><span>Ignore applications</span><small>Only application names are shown.</small></div>
+              <div class="inline-warning app-discovery-error"><span>Application discovery failed: the desktop enumerator is temporarily unavailable. This long error must wrap instead of leaving the tray window.</span><button class="text-button">Retry</button></div>
+            </div>
+            <div class="safety-note"><span class="fake-icon">✓</span><span>Browser safety is never bypassed silently.</span></div>
+            <div class="modal-actions"><button class="secondary-button">Cancel</button><button class="primary-button">Save Capsule</button></div>
+          </div></div>
+        </div></liquid-glass>
+      </div>
+    </div>
+  </section>
+
+  <section id="restore-tall" class="fixture-state">
+    <div class="modal-backdrop">
+      <div class="modal-shell" style="max-width:520px">
+        <liquid-glass class="glass"><div class="modal-content">
+          <div class="modal-heading"><div><h2>Restore “A very long capsule name that must stay inside the tray”?</h2><p>Revision 12 · 12 versions saved</p></div><button class="icon-button">×</button></div>
+          <div class="modal-scroll">
+            <div class="restore-summary-grid"><div><span>▣</span><strong>8</strong><span>Apps</span></div><div><span>◎</span><strong>27</strong><span>Tabs</span></div><div><span>▤</span><strong>5</strong><span>Terminals</span></div><div><span>□</span><strong>4</strong><span>Containers</span></div></div>
+            <div class="service-choice-list"><div class="section-kicker">Restart services</div>
+              <div class="service-choice"><div class="service-choice-copy"><code>python -m app --with-a-very-long-argument-that-must-ellipsis</code><span>PowerShell · C:\Users\potus\Projects\Context Capsule\very-long-working-directory</span></div><select class="compact-select"><option>Start this time</option></select></div>
+              <div class="service-choice"><div class="service-choice-copy"><code>pnpm run dev</code><span>PowerShell · C:\Projects\frontend</span></div><span class="policy-badge">Always</span></div>
+              <div class="service-choice"><div class="service-choice-copy"><code>docker compose up</code><span>PowerShell · C:\Projects\services</span></div><select class="compact-select"><option>Skip</option></select></div>
+            </div>
+            <button class="advanced-toggle"><span>Restore options</span><span>⌃</span></button>
+            <div class="advanced-panel restore-resource-panel"><div class="field-label"><span>Resources</span><small>Choose which parts of the capsule to restore.</small></div><div class="resource-grid"><label class="resource-choice"><input checked type="checkbox">Applications</label><label class="resource-choice"><input checked type="checkbox">Browsers</label><label class="resource-choice"><input checked type="checkbox">Terminals</label><label class="resource-choice"><input checked type="checkbox">Docker</label></div></div>
+            <label class="toggle-row"><div><strong>Replace mode</strong><span>Close unrelated apps before restoring the complete capsule.</span></div><input type="checkbox"><span class="toggle-ui"></span></label>
+            <div class="modal-actions"><button class="secondary-button">Cancel</button><button class="primary-button">Restore Workspace</button></div>
+          </div>
+        </div></liquid-glass>
+      </div>
+    </div>
+  </section>
+
+  <section id="onboarding" class="fixture-state">
+    <div class="modal-backdrop onboarding-backdrop"><div class="onboarding-shell"><liquid-glass class="glass"><div class="onboarding-card">
+      <div class="onboarding-progress"><span class="active"></span><span class="active"></span><span></span></div>
+      <div class="onboarding-visual">◇</div><span class="section-kicker">Tray first</span><h1>One click from the taskbar.</h1><p>Context Capsule stays out of the way. Click its tray icon whenever you want to save where you are or restore a capsule.</p>
+      <label class="onboarding-toggle"><input type="checkbox" checked><div><strong>Start with Windows</strong><span>Keep the tray control available after sign-in.</span></div></label>
+      <button class="primary-button onboarding-next">Continue ›</button><button class="onboarding-skip">×</button>
+    </div></liquid-glass></div></div>
+  </section>
+
+  <section id="operation-error" class="fixture-state">
+    <div class="operation-overlay"><div class="operation-shell"><liquid-glass class="glass"><div class="operation-card"><div class="operation-symbol error">!</div><h2>Saving Context Capsule UI</h2><p class="operation-phase">Action needs attention</p><div class="operation-log"><div class="mini-label">Recent output</div><p>Browser preflight could not use stale state.</p><p>A second long diagnostic line stays clipped inside the tray card.</p><p>No capsule was modified.</p></div><button class="primary-button">Close</button></div></liquid-glass></div></div>
+  </section>
+
+  <script>
+    const requested = new URLSearchParams(location.search).get('state') || 'save-loaded';
+    const target = document.getElementById(requested) || document.getElementById('save-loaded');
+    target.classList.add('active');
+  </script>
+</body>
+</html>
