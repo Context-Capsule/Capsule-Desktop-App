@@ -266,4 +266,4 @@
     oncancel={operationStatus === 'running' && operationCancelable && operationId ? cancelCurrentSave : undefined}
     onclose={operationStatus === 'running' ? undefined : () => operationVisible = false}
   />
-{/if>
+{/if}
