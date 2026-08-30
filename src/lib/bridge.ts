@@ -35,6 +35,8 @@ export const getLogPaths = () => queryDesktop<Record<string, string>>('log-paths
 
 export const runOperation = (request: OperationRequest) =>
   invoke<OperationResult>('run_operation', { request });
+export const cancelOperation = (operationId: string) =>
+  invoke<void>('cancel_operation', { operationId });
 
 export const showMainWindow = (view?: string, capsule?: string) =>
   invoke<void>('show_main_window', { view: view ?? null, capsule: capsule ?? null });
@@ -53,4 +55,3 @@ export async function onTrayAction(handler: (event: { action: 'save' | 'restore-
 export async function onAppNavigation(handler: (event: { view?: string | null; capsule?: string | null }) => void) {
   return listen<{ view?: string | null; capsule?: string | null }>('app-navigation', ({ payload }) => handler(payload));
 }
-
