@@ -159,38 +159,69 @@ try {
       returnByValue: true,
       expression: `(() => {
         const list = document.querySelector('.app-check-list');
-        if (!list) return null;
-        const rect = list.getBoundingClientRect();
-        const style = getComputedStyle(list);
+        const dialog = document.querySelector('.modal-scroll');
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (!list || !dialog || !backdrop) return null;
+        const listRect = list.getBoundingClientRect();
+        const listStyle = getComputedStyle(list);
+        const dialogStyle = getComputedStyle(dialog);
+        const backdropStyle = getComputedStyle(backdrop);
         return {
           innerWidth: window.innerWidth,
           innerHeight: window.innerHeight,
-          clientHeight: list.clientHeight,
-          scrollHeight: list.scrollHeight,
-          scrollTop: list.scrollTop,
-          overflowY: style.overflowY,
-          scrollbarWidth: style.scrollbarWidth,
-          rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right }
+          list: {
+            clientHeight: list.clientHeight,
+            scrollHeight: list.scrollHeight,
+            scrollTop: list.scrollTop,
+            overflowY: listStyle.overflowY,
+            scrollbarWidth: listStyle.scrollbarWidth,
+            overscrollBehaviorY: listStyle.overscrollBehaviorY,
+            rect: { top: listRect.top, bottom: listRect.bottom, left: listRect.left, right: listRect.right }
+          },
+          dialog: {
+            clientHeight: dialog.clientHeight,
+            scrollHeight: dialog.scrollHeight,
+            scrollTop: dialog.scrollTop,
+            overflowY: dialogStyle.overflowY,
+            scrollbarWidth: dialogStyle.scrollbarWidth
+          },
+          backdrop: {
+            clientHeight: backdrop.clientHeight,
+            scrollHeight: backdrop.scrollHeight,
+            overflowY: backdropStyle.overflowY,
+            scrollbarWidth: backdropStyle.scrollbarWidth,
+            placeItems: backdropStyle.placeItems
+          }
         };
       })()`
     });
     const metrics = measured.result?.value;
-    if (!metrics) throw new Error('Full Save application list was not found.');
+    if (!metrics) throw new Error('Full Save scroll surfaces were not found.');
     if (metrics.innerWidth !== width || metrics.innerHeight !== height) {
       throw new Error(`Expected ${width}x${height} CSS viewport, got ${metrics.innerWidth}x${metrics.innerHeight}`);
     }
-    if (metrics.overflowY !== 'auto') throw new Error(`Application list overflow-y is ${metrics.overflowY}, expected auto.`);
-    if (metrics.scrollbarWidth !== 'none') throw new Error(`Application list scrollbar-width is ${metrics.scrollbarWidth}, expected none.`);
-    if (metrics.scrollHeight <= metrics.clientHeight) {
-      throw new Error(`Application list does not overflow: scrollHeight=${metrics.scrollHeight}, clientHeight=${metrics.clientHeight}`);
+
+    if (metrics.list.overflowY !== 'auto') throw new Error(`Application list overflow-y is ${metrics.list.overflowY}, expected auto.`);
+    if (metrics.list.scrollbarWidth !== 'none') throw new Error(`Application list scrollbar-width is ${metrics.list.scrollbarWidth}, expected none.`);
+    if (metrics.list.overscrollBehaviorY !== 'auto') throw new Error(`Application list overscroll-behavior-y is ${metrics.list.overscrollBehaviorY}, expected auto.`);
+    if (metrics.list.scrollHeight <= metrics.list.clientHeight) {
+      throw new Error(`Application list does not overflow: scrollHeight=${metrics.list.scrollHeight}, clientHeight=${metrics.list.clientHeight}`);
     }
-    if (metrics.rect.top < 0 || metrics.rect.bottom > height || metrics.rect.left < 0 || metrics.rect.right > width) {
-      throw new Error(`Application list escapes viewport: ${JSON.stringify(metrics.rect)}`);
+    if (metrics.list.rect.left < 0 || metrics.list.rect.right > width) {
+      throw new Error(`Application list escapes viewport horizontally: ${JSON.stringify(metrics.list.rect)}`);
     }
 
-    await screenshot(cdp, join(outputDir, 'save-ignore-scroll-top.png'));
+    if (metrics.dialog.overflowY !== 'auto') throw new Error(`Dialog body overflow-y is ${metrics.dialog.overflowY}, expected auto.`);
+    if (metrics.dialog.scrollbarWidth !== 'none') throw new Error(`Dialog body scrollbar-width is ${metrics.dialog.scrollbarWidth}, expected none.`);
+    if (metrics.dialog.scrollHeight <= metrics.dialog.clientHeight) {
+      throw new Error(`Dialog body does not overflow: scrollHeight=${metrics.dialog.scrollHeight}, clientHeight=${metrics.dialog.clientHeight}`);
+    }
+    if (metrics.backdrop.overflowY !== 'auto') throw new Error(`Modal backdrop overflow-y is ${metrics.backdrop.overflowY}, expected auto.`);
+    if (metrics.backdrop.scrollbarWidth !== 'none') throw new Error(`Modal backdrop scrollbar-width is ${metrics.backdrop.scrollbarWidth}, expected none.`);
 
-    const scrolled = await cdp.call('Runtime.evaluate', {
+    await screenshot(cdp, join(outputDir, 'save-dialog-top.png'));
+
+    const listScrolled = await cdp.call('Runtime.evaluate', {
       returnByValue: true,
       expression: `(() => {
         const list = document.querySelector('.app-check-list');
@@ -198,16 +229,41 @@ try {
         return { scrollTop: list.scrollTop, maxScroll: list.scrollHeight - list.clientHeight };
       })()`
     });
-    const after = scrolled.result?.value;
-    if (!after || after.scrollTop <= 0 || after.maxScroll <= 0) {
-      throw new Error(`Application list did not scroll: ${JSON.stringify(after)}`);
+    const listAfter = listScrolled.result?.value;
+    if (!listAfter || listAfter.scrollTop <= 0 || listAfter.maxScroll <= 0) {
+      throw new Error(`Application list did not scroll: ${JSON.stringify(listAfter)}`);
     }
-    if (Math.abs(after.scrollTop - after.maxScroll) > 2) {
-      throw new Error(`Application list did not reach the bottom: ${JSON.stringify(after)}`);
+    if (Math.abs(listAfter.scrollTop - listAfter.maxScroll) > 2) {
+      throw new Error(`Application list did not reach the bottom: ${JSON.stringify(listAfter)}`);
+    }
+    await screenshot(cdp, join(outputDir, 'save-ignore-list-bottom.png'));
+
+    const dialogScrolled = await cdp.call('Runtime.evaluate', {
+      returnByValue: true,
+      expression: `(() => {
+        const dialog = document.querySelector('.modal-scroll');
+        dialog.scrollTop = dialog.scrollHeight;
+        const actions = document.querySelector('.modal-actions').getBoundingClientRect();
+        return {
+          scrollTop: dialog.scrollTop,
+          maxScroll: dialog.scrollHeight - dialog.clientHeight,
+          actions: { top: actions.top, bottom: actions.bottom, left: actions.left, right: actions.right }
+        };
+      })()`
+    });
+    const dialogAfter = dialogScrolled.result?.value;
+    if (!dialogAfter || dialogAfter.scrollTop <= 0 || dialogAfter.maxScroll <= 0) {
+      throw new Error(`Full Save dialog did not scroll: ${JSON.stringify(dialogAfter)}`);
+    }
+    if (Math.abs(dialogAfter.scrollTop - dialogAfter.maxScroll) > 2) {
+      throw new Error(`Full Save dialog did not reach the bottom: ${JSON.stringify(dialogAfter)}`);
+    }
+    if (dialogAfter.actions.top < 0 || dialogAfter.actions.bottom > height) {
+      throw new Error(`Save actions are not reachable after dialog scroll: ${JSON.stringify(dialogAfter.actions)}`);
     }
 
-    await screenshot(cdp, join(outputDir, 'save-ignore-scroll-bottom.png'));
-    console.log(`full-save-scroll: client=${metrics.clientHeight}px scroll=${metrics.scrollHeight}px maxScroll=${after.maxScroll}px; hidden scrollbar verified by CSS`);
+    await screenshot(cdp, join(outputDir, 'save-dialog-bottom.png'));
+    console.log(`full-save-scroll: list=${metrics.list.clientHeight}/${metrics.list.scrollHeight}px listMax=${listAfter.maxScroll}px dialog=${metrics.dialog.clientHeight}/${metrics.dialog.scrollHeight}px dialogMax=${dialogAfter.maxScroll}px; nested scrolling and hidden scrollbars verified`);
   } finally {
     cdp.close();
   }
