@@ -58,8 +58,16 @@ jobs:
           $package | ConvertTo-Json -Depth 20 | Set-Content package.json -Encoding utf8
 
           $ts = Get-Content -Raw tsconfig.json | ConvertFrom-Json
-          $ts.compilerOptions.lib = @('ESNext', 'DOM', 'DOM.Iterable')
-          $ts.compilerOptions.types = @('svelte', 'node')
+          if ($ts.compilerOptions.PSObject.Properties['lib']) {
+            $ts.compilerOptions.lib = @('ESNext', 'DOM', 'DOM.Iterable')
+          } else {
+            $ts.compilerOptions | Add-Member -NotePropertyName 'lib' -NotePropertyValue @('ESNext', 'DOM', 'DOM.Iterable')
+          }
+          if ($ts.compilerOptions.PSObject.Properties['types']) {
+            $ts.compilerOptions.types = @('svelte', 'node')
+          } else {
+            $ts.compilerOptions | Add-Member -NotePropertyName 'types' -NotePropertyValue @('svelte', 'node')
+          }
           $ts | ConvertTo-Json -Depth 20 | Set-Content tsconfig.json -Encoding utf8
 
           foreach ($file in @('src\components\SaveModal.svelte', 'src\components\RestoreModal.svelte')) {
