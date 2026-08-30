@@ -11,6 +11,7 @@ import type {
 } from './types';
 
 export const DESKTOP_API_VERSION = 1;
+const REQUIRED_DESKTOP_FEATURES = ['live-workspace', 'services', 'log-paths'];
 
 export async function queryDesktop<T>(action: string, args: string[] = []): Promise<T> {
   return invoke<T>('query_desktop', { action, args });
@@ -20,6 +21,11 @@ export async function contract(): Promise<DesktopContract> {
   const value = await queryDesktop<DesktopContract>('contract');
   if (value.api_version !== DESKTOP_API_VERSION) {
     throw new Error(`Desktop API mismatch: app expects ${DESKTOP_API_VERSION}, CLI provides ${value.api_version}`);
+  }
+  const features = Array.isArray(value.features) ? value.features : [];
+  const missing = REQUIRED_DESKTOP_FEATURES.filter((feature) => !features.includes(feature));
+  if (missing.length) {
+    throw new Error(`Context Capsule CLI is missing required desktop feature(s): ${missing.join(', ')}`);
   }
   return value;
 }
