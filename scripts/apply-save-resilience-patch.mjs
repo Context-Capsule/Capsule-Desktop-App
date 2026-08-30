@@ -5,7 +5,10 @@ const root = resolve(import.meta.dirname, '..');
 
 async function ensureReplacement(path, before, after) {
   const absolute = resolve(root, path);
-  const source = await readFile(absolute, 'utf8');
+  // actions/checkout on POTUS may materialize CRLF even though the repository
+  // stores LF. Normalize the in-memory worktree before exact guarded matching;
+  // Git will normalize the written LF content back to the same index form.
+  const source = (await readFile(absolute, 'utf8')).replace(/\r\n/g, '\n');
   if (source.includes(after)) {
     console.log(`already patched ${path}`);
     return;
@@ -56,7 +59,7 @@ await ensureReplacement(
 );
 
 const testPath = resolve(root, 'tests/save-integration.test.mjs');
-const testSource = await readFile(testPath, 'utf8');
+const testSource = (await readFile(testPath, 'utf8')).replace(/\r\n/g, '\n');
 if (!testSource.includes(`test('save exposes a friendly choice to leave running services untouched'`)) {
   await writeFile(testPath, `${testSource}\n\ntest('save exposes a friendly choice to leave running services untouched', async () => {\n  const modal = await read('src/components/SaveModal.svelte');\n  const app = await read('src/App.svelte');\n  const quick = await read('src/components/QuickPanel.svelte');\n  const full = await read('src/components/FullApp.svelte');\n  const types = await read('src/lib/types.ts');\n  const backend = await read('src-tauri/src/lib.rs');\n\n  assert.match(modal, /let captureServices = \\$state\\(true\\)/);\n  assert.match(modal, /Pause & remember running terminal services/);\n  assert.match(modal, /Turn this off to leave them running/);\n  assert.match(modal, /onsave\\(\\{ name: clean, note: note\\.trim\\(\\), ignoreApps: effectiveIgnored, captureServices \\}\\)/);\n  assert.match(app, /captureServices: payload\\.captureServices/);\n  assert.match(quick, /captureServices: boolean/);\n  assert.match(full, /captureServices: boolean/);\n  assert.match(types, /captureServices: boolean/);\n  assert.match(backend, /default_capture_services/);\n  assert.match(backend, /if \\*capture_services \\{[\\s\\S]*args\\.push\\("--cli-force"\\.to_owned\\(\\)\\)/);\n  assert.match(backend, /fn save_can_leave_running_services_untouched/);\n});\n\ntest('full Save has nested hidden-scrollbar scrolling without trapping the outer dialog', async () => {\n  const css = await read('src/full-save-scroll.css');\n  assert.match(css, /data-window-mode='full'\\] \\.app-check-list \\{[\\s\\S]*overflow-y: auto;[\\s\\S]*overscroll-behavior-y: auto;[\\s\\S]*scrollbar-width: none/);\n  assert.match(css, /data-window-mode='full'\\] \\.modal-backdrop \\{[\\s\\S]*place-items: start center;[\\s\\S]*overflow-y: auto;[\\s\\S]*scrollbar-width: none/);\n  assert.match(css, /data-window-mode='full'\\] \\.modal-scroll \\{[\\s\\S]*flex: 1 1 auto;[\\s\\S]*overflow-y: auto;[\\s\\S]*scrollbar-width: none/);\n});\n`, 'utf8');
   console.log('patched tests/save-integration.test.mjs');
