@@ -77,13 +77,20 @@
       || executable.endsWith('\\context-capsule-desktop.exe');
   }
 
+  function isInternalSelector(value: string) {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'context capsule' || normalized === INTERNAL_APP_SELECTOR;
+  }
+
   async function withInternalExclusions(request: OperationRequest): Promise<OperationRequest> {
     if (request.kind !== 'save' && request.kind !== 'update') return request;
 
-    // --ignore-app intentionally validates selectors. Add the exact name that
-    // live discovery reported for the desktop app, rather than a guessed alias.
-    // This both keeps Context Capsule out of new snapshots and guarantees that
-    // the extra selector cannot make a valid save fail because it matched zero apps.
+    // SaveModal preloads live discovery while the user types and includes the exact
+    // detected desktop-app selector invisibly. Do not repeat the expensive full
+    // discovery when that selector is already present. Update/other call sites
+    // keep the authoritative fallback below.
+    if (request.ignoreApps.some(isInternalSelector)) return request;
+
     try {
       const live = await getLiveWorkspace();
       const internalApp = (live?.applications ?? []).find(isContextCapsuleApplication);
@@ -93,6 +100,15 @@
       }
     } catch { /* The operation itself remains authoritative if live discovery is unavailable. */ }
     return request;
+  }
+
+  function appendUniqueOperationLines(candidates: string[]) {
+    const next = [...operationLines];
+    for (const candidate of candidates) {
+      const clean = candidate.trim();
+      if (clean && !next.includes(clean)) next.push(clean);
+    }
+    operationLines = next.slice(-8);
   }
 
   async function refocusCurrentWindow() {
@@ -131,7 +147,7 @@
       if (result.cancelled) {
         operationStatus = 'error';
         operationPhase = 'Cancelled';
-        operationLines = [...operationLines, 'Save cancelled. No new capsule was kept.'].slice(-8);
+        appendUniqueOperationLines(['Save cancelled. No new capsule was kept.']);
       } else {
         operationStatus = result.success ? 'success' : 'error';
         operationPhase = result.success ? completionPhase(effectiveRequest) : 'Action needs attention';
@@ -150,13 +166,15 @@
             setTimeout(() => hideQuickPanel().catch(() => undefined), 1300);
           }
         } else {
-          operationLines = [...operationLines, ...result.stderr.split(/\r?\n/).filter(Boolean).slice(-3)];
+          // stderr was already streamed through operation-progress. Only append
+          // genuinely new tail lines so one CLI preflight error is never shown twice.
+          appendUniqueOperationLines(result.stderr.split(/\r?\n/).filter(Boolean).slice(-3));
         }
       }
     } catch (error) {
       operationStatus = 'error';
       operationPhase = error instanceof Error ? error.message : String(error);
-      operationLines = [...operationLines, operationPhase];
+      appendUniqueOperationLines([operationPhase]);
     } finally {
       busy = false;
       operationCancelable = false;
@@ -173,7 +191,7 @@
     } catch (error) {
       cancelling = false;
       operationPhase = error instanceof Error ? error.message : String(error);
-      operationLines = [...operationLines, operationPhase].slice(-8);
+      appendUniqueOperationLines([operationPhase]);
     }
   }
 
@@ -196,7 +214,7 @@
     const unsubscribePromise = onOperationEvent((event: OperationEvent) => {
       operationId = event.operationId;
       operationPhase = event.phase || operationPhase;
-      if (event.text.trim()) operationLines = [...operationLines, event.text.trim()].slice(-8);
+      appendUniqueOperationLines([event.text]);
     });
     const trayPromise = onTrayAction((event) => { trayAction = event; });
     contract().catch((error) => { compatibilityError = error instanceof Error ? error.message : String(error); });

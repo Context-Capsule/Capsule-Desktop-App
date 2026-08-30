@@ -24,6 +24,18 @@ html[data-window-mode='quick'] body::after {
   display: none !important;
 }
 
+/* Modal and operation backdrops used to repaint the whole transparent native
+   tray window, making Windows' rectangular surface visible again while saving.
+   In quick mode the native window must stay transparent in every state; only
+   the rounded modal/operation card itself is painted. */
+html[data-window-mode='quick'] .modal-backdrop,
+html[data-window-mode='quick'] .operation-overlay,
+html[data-window-mode='quick'] .modal-shell,
+html[data-window-mode='quick'] .operation-shell {
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+
 /* simple-liquid-glass already renders the smooth optical edge. The old CSS
    border was a second, square-edged border underneath it. Keep one edge only,
    and clip every painted child to the same radius. */
@@ -37,8 +49,10 @@ liquid-glass.glass > * { border-radius: inherit; }
 .quick-root { padding: 5px; }
 .quick-panel {
   padding: 11px;
-  background: linear-gradient(180deg, rgba(11,14,9,.27), rgba(5,7,5,.34));
-  backdrop-filter: blur(16px) saturate(1.1);
+  /* Less transparent than the previous .27/.34 surface, while preserving the
+     transparent native corners and a restrained glass effect. */
+  background: linear-gradient(180deg, rgba(11,14,9,.58), rgba(5,7,5,.66));
+  backdrop-filter: blur(15px) saturate(1.08);
 }
 .quick-header { margin-bottom: 9px; }
 .quick-panel .brand-lockup { gap: 6px; }
@@ -66,7 +80,7 @@ liquid-glass.glass > * { border-radius: inherit; }
 .quick-panel .capsule-card-shell.compact { min-height: 61px; }
 .quick-panel .capsule-card {
   padding: 7px 8px;
-  background: rgba(9,11,8,.26);
+  background: rgba(9,11,8,.44);
 }
 .quick-panel .capsule-main { gap: 7px; }
 .quick-panel .capsule-icon { width: 26px; height: 26px; border-radius: 8px; }
@@ -86,6 +100,13 @@ liquid-glass.glass > * { border-radius: inherit; }
 .quick-panel .search-box { height: 28px; margin-bottom: 6px; }
 .quick-panel .search-box input { font-size: 8px; }
 .quick-panel .empty-state { min-height: 120px; }
+
+/* Quick-window modal/operation cards remain readable even though their outer
+   full-window backdrop is deliberately transparent. */
+html[data-window-mode='quick'] .modal-content {
+  background: linear-gradient(180deg, rgba(15,18,12,.92), rgba(8,10,7,.95)) !important;
+}
+html[data-window-mode='quick'] .operation-card { background: rgba(7,9,6,.94) !important; }
 
 /* Use only the canonical Browser Extension artwork. The previous Sparkles SVG
    is intentionally removed from rendering rather than sitting underneath it. */
@@ -109,13 +130,19 @@ liquid-glass.glass > * { border-radius: inherit; }
 .brand-mark > svg { display: none !important; }
 
 /* Keep the large application readable while increasing the native Acrylic
-   visibility. */
+   visibility. Scroll remains functional, but the browser/WebView scrollbar is
+   intentionally hidden so the full app keeps a native desktop appearance. */
 .full-root { background: transparent !important; }
 .sidebar {
   background: linear-gradient(180deg, rgba(8,10,7,.46), rgba(5,7,5,.38)) !important;
   backdrop-filter: blur(14px) saturate(1.08);
 }
-.full-content { background: rgba(5,7,5,.12) !important; }
+.full-content {
+  background: rgba(5,7,5,.12) !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.full-content::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* The Live Workspace application list should be glanceable: app name only.
    Terminal/service detail remains available in their dedicated rows. */
@@ -126,3 +153,26 @@ liquid-glass.glass > * { border-radius: inherit; }
    their fills translucent prevents the same square-corner underlay elsewhere. */
 .modal-content { background: linear-gradient(180deg, rgba(15,18,12,.58), rgba(8,10,7,.66)); }
 .operation-card { background: rgba(7,9,6,.42); }
+
+.browser-integration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 11px;
+  border-radius: 11px;
+  border: 1px solid rgba(174,252,93,.13);
+  background: rgba(174,252,93,.045);
+}
+.browser-integration-row.warning {
+  border-color: rgba(255,216,77,.18);
+  background: rgba(255,216,77,.055);
+}
+.browser-integration-copy { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.browser-integration-copy > svg { flex: none; margin-top: 1px; color: var(--success); }
+.browser-integration-row.warning .browser-integration-copy > svg { color: var(--warning); }
+.browser-integration-copy strong { display: block; font-size: 9.5px; }
+.browser-integration-copy small { display: block; margin-top: 3px; color: var(--muted); font-size: 8px; line-height: 1.35; }
+.browser-message { margin: -3px 0 10px; line-height: 1.4; }
+.app-discovery-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
