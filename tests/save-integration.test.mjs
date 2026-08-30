@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFile(resolve(root, path), 'utf8');
 
-test('save advanced discovery uses the lightweight application API without an artificial timeout', async () => {
+test('save advanced discovery uses the proven live workspace API without an artificial timeout', async () => {
   const source = await read('src/components/SaveModal.svelte');
   const bridge = await read('src/lib/bridge.ts');
   const rust = await read('src-tauri/src/lib.rs');
@@ -14,19 +14,20 @@ test('save advanced discovery uses the lightweight application API without an ar
   assert.doesNotMatch(source, /Promise\.race/);
   assert.doesNotMatch(source, /Application discovery timed out/);
   assert.doesNotMatch(source, /onMount\([\s\S]*loadApplications/);
-  assert.doesNotMatch(source, /getLiveWorkspace/);
-  assert.match(source, /const discovery = await getApplications\(\)/);
+  assert.match(source, /getLiveWorkspace/);
+  assert.doesNotMatch(source, /getApplications/);
+  assert.match(source, /const live = await getLiveWorkspace\(\)/);
   assert.match(source, /function toggleAdvanced\(\)[\s\S]*if \(advanced && !loadingApps && !detectedApps\.length\) void loadApplications\(\)/);
   assert.match(source, /loadApplications\(true\)/);
   assert.doesNotMatch(source, /<small>\{app\.executable_path\}<\/small>/);
-  assert.match(bridge, /getApplications = \(\) => queryDesktop<any>\('applications'\)/);
-  assert.match(rust, /"applications"/);
+  assert.match(bridge, /getLiveWorkspace = \(\) => queryDesktop<any>\('live'\)/);
+  assert.match(rust, /"live"/);
 });
 
 test('save dialog keeps Zen safety explicit and gives the extension reconnect loop enough time after host repair', async () => {
   const source = await read('src/components/SaveModal.svelte');
   assert.match(source, /zenApp = applications\.find\(isZenApplication\)/);
-  assert.match(source, /firefoxFresh = Boolean\(discovery\?\.browsers\?\.firefox\)/);
+  assert.match(source, /firefoxFresh = Boolean\(live\?\.browsers\?\.firefox\)/);
   assert.match(source, /runOperation\(\{ kind: 'install-browser-host', browser: 'firefox' \}\)/);
   assert.match(source, /setTimeout\(resolve, 5_300\)/);
   assert.match(source, /if \(browserStateKnown && zenApp && !firefoxFresh && !zenIgnored\)/);
@@ -35,7 +36,7 @@ test('save dialog keeps Zen safety explicit and gives the extension reconnect lo
   assert.match(source, /internalSelector \? \[internalSelector\]/);
 });
 
-test('save paints progress before self-exclusion discovery and uses the lightweight application read', async () => {
+test('save paints progress before self-exclusion discovery and keeps the proven live fallback', async () => {
   const source = await read('src/App.svelte');
   const executeStart = source.indexOf('async function execute(request: OperationRequest)');
   const visible = source.indexOf('operationVisible = true;', executeStart);
@@ -43,12 +44,24 @@ test('save paints progress before self-exclusion discovery and uses the lightwei
   assert.ok(executeStart >= 0, 'execute function missing');
   assert.ok(visible > executeStart, 'operation overlay is not made visible');
   assert.ok(exclusionAwait > visible, 'self-exclusion discovery still runs before progress is visible');
-  assert.match(source, /const discovery = await getApplications\(\)/);
-  assert.doesNotMatch(source, /getLiveWorkspace/);
+  assert.match(source, /const live = await getLiveWorkspace\(\)/);
+  assert.match(source, /getLiveWorkspace/);
+  assert.doesNotMatch(source, /getApplications/);
   assert.match(source, /function appendUniqueOperationLines/);
   assert.match(source, /!next\.includes\(clean\)/);
   assert.match(source, /stderr was already streamed through operation-progress/);
   assert.match(source, /if \(request\.ignoreApps\.some\(isInternalSelector\)\) return request/);
+});
+
+test('desktop runtime and packaging contracts reject feature-incomplete sidecars', async () => {
+  const bridge = await read('src/lib/bridge.ts');
+  const prepare = await read('scripts/prepare-sidecar.mjs');
+  assert.match(bridge, /REQUIRED_DESKTOP_FEATURES = \['live-workspace', 'services', 'log-paths'\]/);
+  assert.match(bridge, /const missing = REQUIRED_DESKTOP_FEATURES\.filter/);
+  assert.match(bridge, /missing required desktop feature/);
+  assert.match(prepare, /requiredDesktopFeatures = \['live-workspace', 'services', 'log-paths', 'application-discovery'\]/);
+  assert.match(prepare, /const missing = requiredDesktopFeatures\.filter/);
+  assert.match(prepare, /missing required feature\(s\)/);
 });
 
 test('quick save progress is explicitly centered and remains rectangular-backdrop-free', async () => {
