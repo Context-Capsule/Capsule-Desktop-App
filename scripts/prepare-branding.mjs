@@ -59,16 +59,23 @@ async function installBrandAsset() {
 await installBrandAsset();
 
 // The in-app artwork and the native executable/window/tray icons must come from
-// the exact same canonical PNG. Do not silently keep the old generated fallback:
-// that produced the correct logo inside the WebView while Windows still showed
-// the obsolete application icon.
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const icons = spawnSync(npx, ['tauri', 'icon', destination], {
+// the exact same canonical PNG. Invoke the locally installed Tauri JS entrypoint
+// through the current Node executable rather than npx.cmd: modern Node on Windows
+// does not reliably spawn .cmd shims directly, especially from paths containing
+// spaces. Passing the paths as argv also avoids shell quoting issues.
+const tauriCli = resolve(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
+if (!(await exists(tauriCli))) {
+  throw new Error('The local Tauri CLI is missing. Run npm install before preparing Context Capsule branding.');
+}
+const icons = spawnSync(process.execPath, [tauriCli, 'icon', destination], {
   cwd: root,
   stdio: 'inherit',
   windowsHide: true
 });
+if (icons.error) {
+  throw new Error(`Could not start the Tauri icon generator: ${icons.error.message}`);
+}
 if (icons.status !== 0) {
-  throw new Error('Could not regenerate native Context Capsule icons from the canonical Browser Extension logo.');
+  throw new Error(`Could not regenerate native Context Capsule icons from the canonical Browser Extension logo (exit code ${icons.status ?? 'unknown'}).`);
 }
 console.log('Regenerated native executable, window and tray icons from the canonical Context Capsule logo.');
