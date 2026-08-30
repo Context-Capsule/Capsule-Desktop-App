@@ -10,7 +10,7 @@ test('save overlay exposes cancellation while save is still running', async () =
   const app = await read('src/App.svelte');
   const overlay = await read('src/components/OperationOverlay.svelte');
   const bridge = await read('src/lib/bridge.ts');
-  assert.match(app, /operationCancelable = request\.kind === 'save'/);
+  assert.match(app, /operationCancelable = effectiveRequest\.kind === 'save'/);
   assert.match(app, /cancelOperation\(operationId\)/);
   assert.match(overlay, /Cancel save/);
   assert.match(bridge, /invoke<void>\('cancel_operation'/);
