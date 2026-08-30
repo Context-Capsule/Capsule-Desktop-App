@@ -65,6 +65,7 @@ export type OperationResult = {
   operationId: string;
   code: number;
   success: boolean;
+  cancelled: boolean;
   stdout: string;
   stderr: string;
 };
