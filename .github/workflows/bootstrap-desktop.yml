@@ -1,0 +1,136 @@
+name: Bootstrap and Validate Desktop Source
+
+on:
+  push:
+    branches:
+      - feature/tauri-desktop-app-20260830
+    paths:
+      - '.github/workflows/bootstrap-desktop.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap-and-validate:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    steps:
+      - name: Verify POTUS runner
+        shell: pwsh
+        run: |
+          if ('${{ runner.name }}' -ne 'POTUS') {
+            throw "Expected runner POTUS, got '${{ runner.name }}'"
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct exact locally-tested source tree
+        shell: pwsh
+        run: |
+          $parts = 0..4 | ForEach-Object {
+            $name = 'desktop-source-v2.part{0:D2}' -f $_
+            if (-not (Test-Path $name)) { throw "Missing staged source chunk: $name" }
+            Get-Content -Raw $name
+          }
+          $encoded = $parts -join ''
+          $bytes = [Convert]::FromBase64String($encoded)
+          $archive = Join-Path $env:RUNNER_TEMP 'context-capsule-desktop-source.tar.gz'
+          [IO.File]::WriteAllBytes($archive, $bytes)
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          $expected = '755adb4286f67fc409120582dc61f95a7e81973428814a6f322e1fd610dd4185'
+          if ($hash -ne $expected) {
+            throw "Desktop source archive hash mismatch: expected $expected, got $hash"
+          }
+
+          Get-ChildItem -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force
+          tar -xzf $archive -C $PWD
+          if ($LASTEXITCODE -ne 0) { throw 'Could not extract desktop source archive' }
+
+          foreach ($required in @(
+            'package.json',
+            'src\App.svelte',
+            'src-tauri\Cargo.toml',
+            'src-tauri\src\lib.rs',
+            '.github\workflows\windows-desktop.yml'
+          )) {
+            if (-not (Test-Path $required)) { throw "Reconstructed source is missing $required" }
+          }
+          if (Test-Path '.github\workflows\bootstrap-desktop.yml') {
+            throw 'Final source must not retain the one-shot bootstrap workflow'
+          }
+
+      - name: Ensure stable Rust toolchain
+        shell: pwsh
+        run: |
+          Get-Command rustup -ErrorAction Stop | Format-List Source
+          rustup toolchain install stable --component rustfmt --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { throw 'rustup stable install failed' }
+          rustup default stable
+          if ($LASTEXITCODE -ne 0) { throw 'rustup default stable failed' }
+          rustc --version
+          cargo --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate application icons
+        run: npm run icons:generate
+
+      - name: Source and packaging contract tests
+        run: npm test
+
+      - name: Svelte and TypeScript checks
+        run: npm run check
+
+      - name: Frontend production build
+        run: npm run build
+
+      - name: Prepare non-production CI sidecar placeholders
+        shell: pwsh
+        run: |
+          $triple = rustc --print host-tuple 2>$null
+          if ($LASTEXITCODE -ne 0 -or -not $triple) {
+            $triple = rustc -Vv | Select-String '^host:' | ForEach-Object { $_.Line.Split(':', 2)[1].Trim() }
+          }
+          if (-not $triple) { throw 'Could not determine Rust target triple' }
+          $dir = Join-Path $PWD 'src-tauri\binaries'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          foreach ($name in @('capsule','capsule-agent-worker','capsule-firefox-host','capsule-chrome-host')) {
+            Set-Content -NoNewline -Path (Join-Path $dir "$name-$triple.exe") -Value 'CI packaging placeholder'
+          }
+
+      - name: Rust format
+        shell: pwsh
+        run: cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
+
+      - name: Tauri backend tests
+        run: cargo test --manifest-path src-tauri\Cargo.toml
+
+      - name: Tauri backend check
+        run: cargo check --manifest-path src-tauri\Cargo.toml --all-targets
+
+      - name: Compile Tauri application without bundling placeholder sidecars
+        run: npm run tauri -- build --no-bundle
+
+      - name: Commit validated source tree without scheduling another CI run
+        shell: pwsh
+        run: |
+          git config user.name 'context-capsule-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          if (git diff --cached --quiet) { throw 'Validated source reconstruction produced no repository changes' }
+          git commit -m 'feat: implement Tauri desktop app [skip ci]'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit validated desktop source' }
+          git push origin HEAD:${{ github.ref_name }}
+          if ($LASTEXITCODE -ne 0) { throw 'Could not push validated desktop source' }
+          Write-Host 'Validated desktop source was pushed. [skip ci] prevents a duplicate native run.'
