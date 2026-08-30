@@ -16,11 +16,19 @@ test('desktop bundle contains the complete Context Capsule runtime', async () =>
   ]);
 });
 
-test('webview has no arbitrary shell permission or JS shell dependency', async () => {
+test('webview shell access is limited to the read-only live sidecar command', async () => {
   const capabilities = JSON.parse(await read('src-tauri/capabilities/default.json'));
   const packageJson = JSON.parse(await read('package.json'));
-  assert.equal(packageJson.dependencies?.['@tauri-apps/plugin-shell'], undefined);
-  assert.equal(capabilities.permissions.some((permission) => String(permission).includes('shell')), false);
+  assert.equal(packageJson.dependencies?.['@tauri-apps/plugin-shell'], '^2.3.5');
+  const shellPermissions = capabilities.permissions.filter((permission) =>
+    typeof permission === 'string'
+      ? permission.includes('shell')
+      : String(permission?.identifier ?? '').includes('shell')
+  );
+  assert.deepEqual(shellPermissions, [{
+    identifier: 'shell:allow-spawn',
+    allow: [{ name: 'binaries/capsule', sidecar: true, args: ['desktop', 'live'] }]
+  }]);
 });
 
 test('Rust backend restricts desktop reads and operations', async () => {
