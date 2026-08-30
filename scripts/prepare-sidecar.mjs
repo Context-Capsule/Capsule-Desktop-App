@@ -9,6 +9,7 @@ const binariesDir = join(root, 'src-tauri', 'binaries');
 const isWindows = process.platform === 'win32';
 const exe = isWindows ? '.exe' : '';
 const desktopApiVersion = 1;
+const requiredDesktopFeatures = ['live-workspace', 'services', 'log-paths', 'application-discovery'];
 const names = ['capsule', 'capsule-agent-worker', 'capsule-firefox-host', 'capsule-chrome-host'];
 
 function hostTriple() {
@@ -95,7 +96,12 @@ function verifyDesktopApi(cliDir) {
   if (envelope?.api_version !== desktopApiVersion || envelope?.ok !== true) {
     throw new Error(`Capsule CLI desktop API v${desktopApiVersion} is required. ${repair}`);
   }
-  console.log(`Verified Capsule desktop API v${desktopApiVersion}.`);
+  const features = Array.isArray(envelope?.data?.features) ? envelope.data.features : [];
+  const missing = requiredDesktopFeatures.filter((feature) => !features.includes(feature));
+  if (missing.length) {
+    throw new Error(`Capsule CLI desktop API is missing required feature(s): ${missing.join(', ')}. ${repair}`);
+  }
+  console.log(`Verified Capsule desktop API v${desktopApiVersion} with required features: ${requiredDesktopFeatures.join(', ')}.`);
 }
 
 const triple = hostTriple();
