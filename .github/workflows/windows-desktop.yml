@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate-windows:
@@ -53,9 +53,6 @@ jobs:
       - name: Validate Windows branding preparation
         shell: pwsh
         run: |
-          # Use an icon generated in this clean checkout as the explicit source.
-          # This tests the same local Tauri JS invocation and path-with-spaces
-          # behavior as production without requiring another private repository.
           $env:CAPSULE_BRAND_ASSET = Join-Path $PWD 'src-tauri\icons\icon.png'
           npm run brand:prepare
 
@@ -102,8 +99,6 @@ jobs:
           $dir = Join-Path $PWD 'src-tauri\binaries'
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           foreach ($name in @('capsule','capsule-agent-worker','capsule-firefox-host','capsule-chrome-host')) {
-            # These placeholders exist only so tauri-build can validate its externalBin configuration.
-            # They are never uploaded or treated as a production installer/runtime.
             Set-Content -NoNewline -Path (Join-Path $dir "$name-$triple.exe") -Value 'CI packaging placeholder'
           }
 
@@ -123,7 +118,7 @@ jobs:
       - name: Publish validated save resilience patch
         shell: pwsh
         run: |
-          git checkout HEAD^ -- .github/workflows/windows-desktop.yml
+          git checkout 450d2fcbd027a2ce8c4a08600b11f7cd5960cb4d -- .github/workflows/windows-desktop.yml
           git rm scripts/apply-save-resilience-patch.mjs
           git add src/components/QuickPanel.svelte src/components/FullApp.svelte src-tauri/src/lib.rs tests/save-integration.test.mjs .github/workflows/windows-desktop.yml
           git diff --cached --check
