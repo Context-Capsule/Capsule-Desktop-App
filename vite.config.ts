@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
-const rustTargetSegment = `${String.raw`\`}src-tauri${String.raw`\`}target${String.raw`\`}`;
+const rustTargetSegment = '\\src-tauri\\target\\';
 
 export default defineConfig({
   plugins: [svelte()],
@@ -15,7 +15,7 @@ export default defineConfig({
       // Watching those files on Windows (especially inside OneDrive) can race
       // with the linker and surface as EBUSY from Node's FSWatcher.
       ignored: (path) => {
-        const normalizedPath = path.replaceAll('/', String.raw`\`);
+        const normalizedPath = path.replaceAll('/', '\\');
         return normalizedPath.includes(rustTargetSegment);
       }
     }
