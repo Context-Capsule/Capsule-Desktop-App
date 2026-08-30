@@ -7,7 +7,7 @@
   } from '@tauri-apps/plugin-notification';
   import type { CapsuleSummary, OperationEvent, OperationRequest, Settings } from './lib/types';
   import { defaultSettings } from './lib/types';
-  import { contract, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
+  import { cancelOperation, contract, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
   import FullApp from './components/FullApp.svelte';
   import OperationOverlay from './components/OperationOverlay.svelte';
   import Onboarding from './components/Onboarding.svelte';
@@ -26,6 +26,8 @@
   let operationStatus = $state<'running' | 'success' | 'error'>('running');
   let operationVisible = $state(false);
   let operationId = $state('');
+  let operationCancelable = $state(false);
+  let cancelling = $state(false);
   let compatibilityError = $state('');
   let trayAction = $state<{ action: 'save' | 'restore-last'; nonce: number } | null>(null);
   let onboardingVisible = $state(localStorage.getItem(ONBOARDING_KEY) !== 'done');
@@ -52,7 +54,7 @@
       case 'note': return 'Saving note';
       case 'service-policy': return 'Updating service policy';
       case 'service-prestart': return 'Updating pre-start command';
-      case 'install-browser-host': return `Setting up ${request.browser === 'firefox' ? 'Firefox / Zen' : 'Chrome'} integration`; 
+      case 'install-browser-host': return `Setting up ${request.browser === 'firefox' ? 'Firefox / Zen' : 'Chrome'} integration`;
     }
   }
 
@@ -75,19 +77,27 @@
     operationPhase = 'Preparing…';
     operationLines = [];
     operationId = '';
+    operationCancelable = request.kind === 'save';
+    cancelling = false;
     try {
       const result = await runOperation(request);
       operationId = result.operationId;
-      operationStatus = result.success ? 'success' : 'error';
-      operationPhase = result.success ? 'Complete' : 'Action needs attention';
-      if (result.success) {
-        refreshVersion += 1;
-        await notify('Context Capsule', `${operationTitle} completed.`);
-        if (mode === 'quick' && settings.autoCloseQuickPanel) {
-          setTimeout(() => hideQuickPanel().catch(() => undefined), 1300);
-        }
+      if (result.cancelled) {
+        operationStatus = 'error';
+        operationPhase = 'Cancelled';
+        operationLines = [...operationLines, 'Save cancelled. No new capsule was kept.'].slice(-8);
       } else {
-        operationLines = [...operationLines, ...result.stderr.split(/\r?\n/).filter(Boolean).slice(-3)];
+        operationStatus = result.success ? 'success' : 'error';
+        operationPhase = result.success ? 'Complete' : 'Action needs attention';
+        if (result.success) {
+          refreshVersion += 1;
+          await notify('Context Capsule', `${operationTitle} completed.`);
+          if (mode === 'quick' && settings.autoCloseQuickPanel) {
+            setTimeout(() => hideQuickPanel().catch(() => undefined), 1300);
+          }
+        } else {
+          operationLines = [...operationLines, ...result.stderr.split(/\r?\n/).filter(Boolean).slice(-3)];
+        }
       }
     } catch (error) {
       operationStatus = 'error';
@@ -95,6 +105,21 @@
       operationLines = [...operationLines, operationPhase];
     } finally {
       busy = false;
+      operationCancelable = false;
+      cancelling = false;
+    }
+  }
+
+  async function cancelCurrentSave() {
+    if (!operationCancelable || !operationId || cancelling) return;
+    cancelling = true;
+    operationPhase = 'Cancelling…';
+    try {
+      await cancelOperation(operationId);
+    } catch (error) {
+      cancelling = false;
+      operationPhase = error instanceof Error ? error.message : String(error);
+      operationLines = [...operationLines, operationPhase].slice(-8);
     }
   }
 
@@ -138,7 +163,6 @@
   <FullApp {settings} {busy} {refreshVersion} onSettings={saveSettings} onSave={saveCapsule} onRestore={restoreCapsule} onOperation={execute}/>
 {/if}
 
-
 {#if onboardingVisible}
   <Onboarding
     onfinish={() => { localStorage.setItem(ONBOARDING_KEY, 'done'); onboardingVisible = false; }}
@@ -147,5 +171,13 @@
 {/if}
 
 {#if operationVisible}
-  <OperationOverlay title={operationTitle} phase={operationPhase} lines={operationLines} status={operationStatus} onclose={operationStatus === 'running' ? undefined : () => operationVisible = false}/>
+  <OperationOverlay
+    title={operationTitle}
+    phase={operationPhase}
+    lines={operationLines}
+    status={operationStatus}
+    cancelling={cancelling}
+    oncancel={operationStatus === 'running' && operationCancelable && operationId ? cancelCurrentSave : undefined}
+    onclose={operationStatus === 'running' ? undefined : () => operationVisible = false}
+  />
 {/if}
