@@ -1,0 +1,18 @@
+/* The full desktop Save dialog can have many discovered applications. Keep the
+   chooser itself bounded so wheel/touchpad scrolling stays local to the list,
+   matching the compact tray experience without showing a browser scrollbar. */
+html[data-window-mode='full'] .app-check-list {
+  min-height: 0;
+  max-height: min(280px, 38vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html[data-window-mode='full'] .app-check-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
