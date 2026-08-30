@@ -100,6 +100,13 @@ jobs:
           )
           Set-Content -LiteralPath 'src\components\RestoreModal.svelte' -Value $restore -Encoding utf8
 
+          $quick = Get-Content -Raw 'src\components\QuickPanel.svelte'
+          $quick = $quick.Replace(
+            "    if (trayAction.action === 'restore-last' && capsules[0]) openRestore(capsules[0]);",
+            "    if (trayAction.action === 'restore-last') {`r`n      void (async () => {`r`n        if (!capsules.length) await refresh();`r`n        if (capsules[0]) await openRestore(capsules[0]);`r`n      })();`r`n    }"
+          )
+          Set-Content -LiteralPath 'src\components\QuickPanel.svelte' -Value $quick -Encoding utf8
+
           $note = @'
           <script lang="ts">
             import { onMount } from 'svelte';
