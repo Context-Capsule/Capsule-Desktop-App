@@ -74,6 +74,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Capture functional full-app Save list scrolling
+        run: node scripts/capture-full-save-scroll.mjs
+
+      - name: Upload full-app Save scroll fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-save-scroll-visuals
+          path: screenshots/full/*.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Prepare non-production CI sidecar placeholders
         shell: pwsh
         run: |
@@ -109,6 +120,7 @@ jobs:
         run: |
           Write-Host 'Desktop native/frontend validation passed.'
           Write-Host 'Quick-window screenshots use Chromium DevTools device-metrics emulation at exactly 340x440 CSS pixels and assert every shell remains inside the viewport.'
+          Write-Host 'Full-app Save validation uses an exact 1100x760 CSS viewport, verifies the application list really overflows, programmatically scrolls it to the bottom, and confirms the scrollbar stays hidden.'
           Write-Host 'They are browser-rendered CSS fixtures, not WebView2/native-window screenshots.'
           Write-Host 'This workflow intentionally does not manufacture a production installer with placeholder sidecars.'
           Write-Host 'Production packaging requires real release binaries from Capsule-CLI: capsule, agent worker, Firefox/Zen host, and Chrome host.'
