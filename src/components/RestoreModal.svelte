@@ -15,7 +15,6 @@
   const revisionLabel = $derived(reference?.match(/@(\d+)$/)?.[1] ?? String(capsule.current_revision));
 
   let replace = $state(false);
-  $effect(() => { replace = defaultReplace; });
   let decisions = $state<Record<number, 'once' | 'always' | 'skip'>>({});
   let advanced = $state(false);
   const resourceOptions = [
@@ -27,7 +26,13 @@
     { key: 'docker', label: 'Docker', icon: Boxes },
     { key: 'explorer', label: 'Explorer', icon: FolderOpen },
   ];
-  let selectedResources = $state<string[]>(resourceOptions.map((item) => item.key));
+  const allResourceKeys = resourceOptions.map((item) => item.key);
+  let selectedResources = $state<string[]>([...allResourceKeys]);
+
+  $effect(() => {
+    replace = defaultReplace;
+    if (defaultReplace) selectedResources = [...allResourceKeys];
+  });
 
   $effect(() => {
     for (const service of services) {
@@ -38,14 +43,25 @@
   });
 
   function toggleResource(key: string, checked: boolean) {
+    if (replace) return;
     selectedResources = checked
       ? [...selectedResources.filter((value) => value !== key), key]
       : selectedResources.filter((value) => value !== key);
   }
 
+  function setReplace(checked: boolean) {
+    replace = checked;
+    // The mature CLI intentionally rejects --replace combined with --only:
+    // replace may close unrelated applications, so a partial restore would be
+    // unsafe. Switching to Replace therefore makes the operation whole-capsule.
+    if (checked) selectedResources = [...allResourceKeys];
+  }
+
   const submit = () => onrestore({
     replace,
-    only: selectedResources.length === resourceOptions.length ? [] : resourceOptions.map((item) => item.key).filter((key) => selectedResources.includes(key)),
+    only: replace || selectedResources.length === resourceOptions.length
+      ? []
+      : allResourceKeys.filter((key) => selectedResources.includes(key)),
     decisions: services
       .filter((service: ServiceSummary) => service.restart_policy !== 'always')
       .map((service: ServiceSummary) => ({ serviceIndex: service.service_index, decision: decisions[service.service_index] ?? 'once' }))
@@ -88,12 +104,15 @@
   </button>
   {#if advanced}
     <div class="advanced-panel restore-resource-panel">
-      <div class="field-label"><span>Resources</span><small>Choose which parts of the capsule to restore. All are selected by default.</small></div>
+      <div class="field-label">
+        <span>Resources</span>
+        <small>{replace ? 'Replace mode restores the whole capsule so excluded applications are never closed accidentally.' : 'Choose which parts of the capsule to restore. All are selected by default.'}</small>
+      </div>
       <div class="resource-grid">
         {#each resourceOptions as option}
           {@const Icon = option.icon}
           <label class="resource-choice">
-            <input type="checkbox" checked={selectedResources.includes(option.key)} onchange={(event) => toggleResource(option.key, (event.currentTarget as HTMLInputElement).checked)}/>
+            <input type="checkbox" disabled={replace} checked={selectedResources.includes(option.key)} onchange={(event) => toggleResource(option.key, (event.currentTarget as HTMLInputElement).checked)}/>
             <Icon size={14}/><span>{option.label}</span>
           </label>
         {/each}
@@ -102,8 +121,8 @@
   {/if}
 
   <label class="toggle-row">
-    <div><strong>Replace mode</strong><span>Close unrelated apps before restoring.</span></div>
-    <input type="checkbox" bind:checked={replace}/><span class="toggle-ui"></span>
+    <div><strong>Replace mode</strong><span>Close unrelated apps before restoring the complete capsule.</span></div>
+    <input type="checkbox" checked={replace} onchange={(event) => setReplace((event.currentTarget as HTMLInputElement).checked)}/><span class="toggle-ui"></span>
   </label>
 
   <div class="modal-actions">
