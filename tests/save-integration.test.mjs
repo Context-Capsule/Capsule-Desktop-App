@@ -6,10 +6,10 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFile(resolve(root, path), 'utf8');
 
-test('save advanced discovery uses the proven live workspace API without an artificial timeout', async () => {
+test('save advanced discovery resolves on direct live-sidecar termination without an artificial timeout', async () => {
   const source = await read('src/components/SaveModal.svelte');
   const bridge = await read('src/lib/bridge.ts');
-  const rust = await read('src-tauri/src/lib.rs');
+  const capability = JSON.parse(await read('src-tauri/capabilities/default.json'));
   assert.doesNotMatch(source, /APPLICATION_DISCOVERY_TIMEOUT_MS/);
   assert.doesNotMatch(source, /Promise\.race/);
   assert.doesNotMatch(source, /Application discovery timed out/);
@@ -20,8 +20,19 @@ test('save advanced discovery uses the proven live workspace API without an arti
   assert.match(source, /function toggleAdvanced\(\)[\s\S]*if \(advanced && !loadingApps && !detectedApps\.length\) void loadApplications\(\)/);
   assert.match(source, /loadApplications\(true\)/);
   assert.doesNotMatch(source, /<small>\{app\.executable_path\}<\/small>/);
-  assert.match(bridge, /getLiveWorkspace = \(\) => queryDesktop<any>\('live'\)/);
-  assert.match(rust, /"live"/);
+
+  assert.match(bridge, /Command\.sidecar\('binaries\/capsule', \['desktop', 'live'\]\)/);
+  assert.match(bridge, /command\.stdout\.on\('data'/);
+  assert.match(bridge, /command\.on\('close', \(\{ code \}\) =>/);
+  assert.match(bridge, /command\.spawn\(\)/);
+  assert.match(bridge, /getLiveWorkspace = \(\) => queryLiveSidecar<any>\(\)/);
+  assert.doesNotMatch(bridge, /queryLiveSidecar[\s\S]*\.output\(\)/);
+
+  const spawnPermission = capability.permissions.find((permission) => permission?.identifier === 'shell:allow-spawn');
+  assert.deepEqual(spawnPermission, {
+    identifier: 'shell:allow-spawn',
+    allow: [{ name: 'binaries/capsule', sidecar: true, args: ['desktop', 'live'] }]
+  });
 });
 
 test('save dialog keeps Zen safety explicit and gives the extension reconnect loop enough time after host repair', async () => {
