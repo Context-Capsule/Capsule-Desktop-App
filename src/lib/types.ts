@@ -52,7 +52,7 @@ export type OperationDecision = {
 };
 
 export type OperationRequest =
-  | { kind: 'save'; name: string; note?: string; ignoreApps: string[] }
+  | { kind: 'save'; name: string; note?: string; ignoreApps: string[]; captureServices: boolean }
   | { kind: 'update'; name: string; ignoreApps: string[] }
   | { kind: 'restore'; reference: string; replace?: boolean; only?: string[]; decisions?: OperationDecision[] }
   | { kind: 'delete'; name: string }
