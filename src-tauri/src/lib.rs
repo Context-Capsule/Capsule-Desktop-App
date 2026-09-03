@@ -142,6 +142,256 @@ struct ActiveOperations {
     cancelled: Mutex<HashSet<String>>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedAppStateSnapshot {
+    generation: u64,
+    busy: bool,
+    operation_id: Option<String>,
+    kind: Option<String>,
+    title: String,
+    phase: String,
+    lines: Vec<String>,
+    status: String,
+    cancelable: bool,
+    cancelling: bool,
+    operation_visible: bool,
+    data_revision: u64,
+}
+
+impl Default for SharedAppStateSnapshot {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            busy: false,
+            operation_id: None,
+            kind: None,
+            title: String::new(),
+            phase: String::new(),
+            lines: Vec::new(),
+            status: "idle".to_owned(),
+            cancelable: false,
+            cancelling: false,
+            operation_visible: false,
+            data_revision: 0,
+        }
+    }
+}
+
+impl SharedAppStateSnapshot {
+    fn begin(
+        &mut self,
+        operation_id: &str,
+        request: &OperationRequest,
+        visible: bool,
+    ) -> Result<(), String> {
+        if self.busy {
+            return Err("another Context Capsule operation is already running".to_owned());
+        }
+        self.busy = true;
+        self.operation_id = Some(operation_id.to_owned());
+        self.kind = Some(operation_kind(request).to_owned());
+        self.title = operation_title(request);
+        self.phase = "Preparing…".to_owned();
+        self.lines.clear();
+        self.status = "running".to_owned();
+        self.cancelable = matches!(request, OperationRequest::Save { .. });
+        self.cancelling = false;
+        self.operation_visible = visible;
+        Ok(())
+    }
+
+    fn progress(&mut self, operation_id: &str, text: &str, phase: &str) {
+        if !self.busy || self.operation_id.as_deref() != Some(operation_id) {
+            return;
+        }
+        if !phase.trim().is_empty() {
+            self.phase = phase.to_owned();
+        }
+        let clean = sanitize_line(text).trim().to_owned();
+        if !clean.is_empty() && !self.lines.contains(&clean) {
+            self.lines.push(clean);
+            if self.lines.len() > 8 {
+                let excess = self.lines.len() - 8;
+                self.lines.drain(0..excess);
+            }
+        }
+        self.cancelling = phase.eq_ignore_ascii_case("Cancelling");
+    }
+
+    fn set_cancelling(&mut self, operation_id: &str) {
+        if self.busy && self.operation_id.as_deref() == Some(operation_id) {
+            self.cancelling = true;
+            self.phase = "Cancelling…".to_owned();
+        }
+    }
+
+    fn finish(
+        &mut self,
+        operation_id: &str,
+        success: bool,
+        cancelled: bool,
+        completion: &str,
+        mutate_data: bool,
+    ) {
+        if self.operation_id.as_deref() != Some(operation_id) {
+            return;
+        }
+        self.busy = false;
+        self.cancelable = false;
+        self.cancelling = false;
+        if success && mutate_data {
+            self.data_revision = self.data_revision.wrapping_add(1);
+        }
+        if self.operation_visible {
+            self.status = if success { "success" } else { "error" }.to_owned();
+            self.phase = if cancelled {
+                "Cancelled".to_owned()
+            } else if success {
+                completion.to_owned()
+            } else {
+                "Action needs attention".to_owned()
+            };
+        } else {
+            self.operation_id = None;
+            self.kind = None;
+            self.title.clear();
+            self.phase.clear();
+            self.lines.clear();
+            self.status = "idle".to_owned();
+        }
+    }
+
+    fn dismiss(&mut self, operation_id: &str) -> Result<(), String> {
+        if self.busy {
+            return Err("cannot dismiss an operation while it is running".to_owned());
+        }
+        if self.operation_id.as_deref() != Some(operation_id) {
+            return Err("operation is no longer current".to_owned());
+        }
+        self.operation_id = None;
+        self.kind = None;
+        self.title.clear();
+        self.phase.clear();
+        self.lines.clear();
+        self.status = "idle".to_owned();
+        self.cancelable = false;
+        self.cancelling = false;
+        self.operation_visible = false;
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct SharedAppState {
+    snapshot: Mutex<SharedAppStateSnapshot>,
+}
+
+fn update_shared_state<F>(
+    app: &AppHandle,
+    shared: &SharedAppState,
+    update: F,
+) -> SharedAppStateSnapshot
+where
+    F: FnOnce(&mut SharedAppStateSnapshot),
+{
+    let snapshot = {
+        let mut state = shared
+            .snapshot
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        update(&mut state);
+        state.generation = state.generation.wrapping_add(1);
+        state.clone()
+    };
+    let _ = app.emit("app-state-changed", snapshot.clone());
+    snapshot
+}
+
+fn operation_kind(request: &OperationRequest) -> &'static str {
+    match request {
+        OperationRequest::Save { .. } => "save",
+        OperationRequest::Update { .. } => "update",
+        OperationRequest::Restore { .. } => "restore",
+        OperationRequest::Delete { .. } => "delete",
+        OperationRequest::Note { .. } => "note",
+        OperationRequest::ServicePolicy { .. } => "service-policy",
+        OperationRequest::ServicePrestart { .. } => "service-prestart",
+        OperationRequest::InstallBrowserHost { .. } => "install-browser-host",
+    }
+}
+
+fn operation_title(request: &OperationRequest) -> String {
+    match request {
+        OperationRequest::Save { name, .. } => format!("Saving {name}"),
+        OperationRequest::Update { name, .. } => format!("Updating {name}"),
+        OperationRequest::Restore { reference, .. } => format!("Restoring {reference}"),
+        OperationRequest::Delete { name } => format!("Deleting {name}"),
+        OperationRequest::Note { .. } => "Saving note".to_owned(),
+        OperationRequest::ServicePolicy { .. } => "Updating service policy".to_owned(),
+        OperationRequest::ServicePrestart { .. } => "Updating pre-start command".to_owned(),
+        OperationRequest::InstallBrowserHost { browser } if browser == "firefox" => {
+            "Setting up Firefox / Zen integration".to_owned()
+        }
+        OperationRequest::InstallBrowserHost { .. } => "Setting up Chrome integration".to_owned(),
+    }
+}
+
+fn completion_phase(request: &OperationRequest) -> &'static str {
+    match request {
+        OperationRequest::Save { .. } => "Capsule saved",
+        OperationRequest::Restore { .. } => "Capsule restored",
+        _ => "Complete",
+    }
+}
+
+fn operation_mutates_data(request: &OperationRequest) -> bool {
+    !matches!(request, OperationRequest::InstallBrowserHost { .. })
+}
+
+fn fail_shared_operation(app: &AppHandle, shared: &SharedAppState, operation_id: &str) {
+    update_shared_state(app, shared, |state| {
+        state.finish(operation_id, false, false, "Complete", false);
+    });
+}
+
+#[tauri::command]
+fn get_shared_app_state(shared: State<'_, SharedAppState>) -> SharedAppStateSnapshot {
+    shared
+        .snapshot
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+#[tauri::command]
+fn dismiss_shared_operation(
+    app: AppHandle,
+    shared: State<'_, SharedAppState>,
+    operation_id: String,
+) -> Result<(), String> {
+    let mut result = Ok(());
+    update_shared_state(&app, shared.inner(), |state| {
+        result = state.dismiss(&operation_id);
+    });
+    result
+}
+
+#[tauri::command]
+fn publish_settings(app: AppHandle, settings: Value) -> Result<(), String> {
+    if !settings.is_object() {
+        return Err("settings payload must be an object".to_owned());
+    }
+    app.emit("settings-changed", settings)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn publish_onboarding_done(app: AppHandle) -> Result<(), String> {
+    app.emit("onboarding-done", json!({ "done": true }))
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn query_desktop(app: AppHandle, action: String, args: Vec<String>) -> Result<Value, String> {
     let mut value = desktop_api_call(&app, &action, &args).await?;
@@ -159,18 +409,40 @@ async fn query_desktop(app: AppHandle, action: String, args: Vec<String>) -> Res
 }
 
 #[tauri::command]
-async fn delete_capsule(app: AppHandle, name: String) -> Result<(), String> {
+async fn delete_capsule(
+    app: AppHandle,
+    shared: State<'_, SharedAppState>,
+    name: String,
+) -> Result<(), String> {
     require_nonempty("capsule name", &name)?;
+    let operation_id = next_operation_id();
+    let request = OperationRequest::Delete { name: name.clone() };
+    let mut begin_result = Ok(());
+    update_shared_state(&app, shared.inner(), |state| {
+        begin_result = state.begin(&operation_id, &request, false);
+    });
+    begin_result?;
+
     let started = Instant::now();
     append_app_log(format!("delete.begin capsule={name:?}"));
 
-    let (mut rx, _child) = app
-        .shell()
-        .sidecar("capsule")
-        .map_err(|error| format!("Context Capsule sidecar is unavailable: {error}"))?
+    let delete_command = match app.shell().sidecar("capsule") {
+        Ok(command) => command,
+        Err(error) => {
+            fail_shared_operation(&app, shared.inner(), &operation_id);
+            return Err(format!("Context Capsule sidecar is unavailable: {error}"));
+        }
+    };
+    let (mut rx, _child) = match delete_command
         .args(["delete".to_owned(), name.clone()])
         .spawn()
-        .map_err(|error| format!("could not start capsule delete: {error}"))?;
+    {
+        Ok(value) => value,
+        Err(error) => {
+            fail_shared_operation(&app, shared.inner(), &operation_id);
+            return Err(format!("could not start capsule delete: {error}"));
+        }
+    };
 
     let mut stderr = String::new();
     let mut termination_code = None;
@@ -190,13 +462,18 @@ async fn delete_capsule(app: AppHandle, name: String) -> Result<(), String> {
         }
     }
 
-    let code = termination_code
-        .ok_or_else(|| "capsule delete ended without a termination event".to_owned())?;
+    let code = match termination_code {
+        Some(code) => code,
+        None => {
+            fail_shared_operation(&app, shared.inner(), &operation_id);
+            return Err("capsule delete ended without a termination event".to_owned());
+        }
+    };
     append_app_log(format!(
         "delete.complete capsule={name:?} code={code} elapsed_ms={}",
         started.elapsed().as_millis()
     ));
-    if code == 0 {
+    let result = if code == 0 {
         Ok(())
     } else {
         let message = stderr.trim();
@@ -205,7 +482,17 @@ async fn delete_capsule(app: AppHandle, name: String) -> Result<(), String> {
         } else {
             message.to_owned()
         })
-    }
+    };
+    update_shared_state(&app, shared.inner(), |state| {
+        state.finish(
+            &operation_id,
+            result.is_ok(),
+            false,
+            "Complete",
+            result.is_ok(),
+        );
+    });
+    result
 }
 
 async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Result<Value, String> {
@@ -294,6 +581,69 @@ async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Res
         .ok_or_else(|| "desktop API response did not contain data".to_owned())
 }
 
+fn is_internal_selector(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "context capsule" | "context-capsule-desktop"
+    )
+}
+
+fn is_context_capsule_application(value: &Value) -> bool {
+    let name = value
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let executable = value
+        .get("executable_path")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .replace('/', "\\")
+        .to_ascii_lowercase();
+    name == "context capsule"
+        || name == "context-capsule-desktop"
+        || executable.ends_with("\\context-capsule-desktop.exe")
+}
+
+async fn add_internal_app_exclusion(app: &AppHandle, request: &mut OperationRequest) {
+    let ignore_apps = match request {
+        OperationRequest::Save { ignore_apps, .. }
+        | OperationRequest::Update { ignore_apps, .. } => ignore_apps,
+        _ => return,
+    };
+    if ignore_apps.iter().any(|value| is_internal_selector(value)) {
+        return;
+    }
+
+    let Ok(live) = desktop_api_call(app, "live", &[]).await else {
+        return;
+    };
+    let Some(applications) = live.get("applications").and_then(Value::as_array) else {
+        return;
+    };
+    let Some(internal) = applications
+        .iter()
+        .find(|value| is_context_capsule_application(value))
+    else {
+        return;
+    };
+    let Some(name) = internal
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return;
+    };
+    if !ignore_apps
+        .iter()
+        .any(|value| value.eq_ignore_ascii_case(name))
+    {
+        ignore_apps.push(name.to_owned());
+    }
+}
+
 async fn capsule_exists(app: &AppHandle, name: &str) -> Result<bool, String> {
     let overview = desktop_api_call(app, "overview", &[]).await?;
     Ok(overview
@@ -313,12 +663,37 @@ async fn capsule_exists(app: &AppHandle, name: &str) -> Result<bool, String> {
 async fn run_operation(
     app: AppHandle,
     active: State<'_, ActiveOperations>,
-    request: OperationRequest,
+    shared: State<'_, SharedAppState>,
+    mut request: OperationRequest,
 ) -> Result<OperationResult, String> {
+    operation_command(&request)?;
     let operation_id = next_operation_id();
+    let mut begin_result = Ok(());
+    update_shared_state(&app, shared.inner(), |state| {
+        begin_result = state.begin(&operation_id, &request, true);
+    });
+    begin_result?;
+
+    add_internal_app_exclusion(&app, &mut request).await;
     let operation_started = Instant::now();
-    let (program, args) = operation_command(&request)?;
-    let decision_file = write_restore_decision_file(&request, &operation_id)?;
+    let (program, args) = match operation_command(&request) {
+        Ok(value) => value,
+        Err(error) => {
+            update_shared_state(&app, shared.inner(), |state| {
+                state.finish(&operation_id, false, false, "Complete", false);
+            });
+            return Err(error);
+        }
+    };
+    let decision_file = match write_restore_decision_file(&request, &operation_id) {
+        Ok(value) => value,
+        Err(error) => {
+            update_shared_state(&app, shared.inner(), |state| {
+                state.finish(&operation_id, false, false, "Complete", false);
+            });
+            return Err(error);
+        }
+    };
     let working_directory = preferred_operation_directory(&app, &request).await;
     let save_name = match &request {
         OperationRequest::Save { name, .. } => Some(name.clone()),
@@ -334,19 +709,26 @@ async fn run_operation(
     ));
     emit_operation(
         &app,
+        shared.inner(),
         &operation_id,
         "status",
         "Operation started",
         "Preparing",
     );
 
-    let mut command = app
-        .shell()
-        .sidecar(program)
-        .map_err(|error| {
-            format!("required Context Capsule sidecar '{program}' is unavailable: {error}")
-        })?
-        .args(args);
+    let sidecar = match app.shell().sidecar(program) {
+        Ok(command) => command,
+        Err(error) => {
+            if let Some(path) = decision_file.as_ref() {
+                let _ = fs::remove_file(path);
+            }
+            fail_shared_operation(&app, shared.inner(), &operation_id);
+            return Err(format!(
+                "required Context Capsule sidecar '{program}' is unavailable: {error}"
+            ));
+        }
+    };
+    let mut command = sidecar.args(args);
     if matches!(
         request,
         OperationRequest::Save { .. } | OperationRequest::Update { .. }
@@ -365,12 +747,20 @@ async fn run_operation(
     if let Some(path) = decision_file.as_ref() {
         command = command.env(SERVICE_DECISIONS_ENV, path.to_string_lossy().to_string());
     }
-    let (mut rx, child) = command.spawn().map_err(|error| {
-        if let Some(path) = decision_file.as_ref() {
-            let _ = fs::remove_file(path);
+    let (mut rx, child) = match command.spawn() {
+        Ok(value) => value,
+        Err(error) => {
+            if let Some(path) = decision_file.as_ref() {
+                let _ = fs::remove_file(path);
+            }
+            update_shared_state(&app, shared.inner(), |state| {
+                state.finish(&operation_id, false, false, "Complete", false);
+            });
+            return Err(format!(
+                "could not start Context Capsule operation: {error}"
+            ));
         }
-        format!("could not start Context Capsule operation: {error}")
-    })?;
+    };
 
     active
         .children
@@ -395,18 +785,33 @@ async fn run_operation(
                 let text = String::from_utf8_lossy(&bytes).into_owned();
                 push_bounded(&mut stdout, &text);
                 let phase = phase_for_line(&text);
-                emit_operation(&app, &operation_id, "stdout", text.trim(), phase);
+                emit_operation(
+                    &app,
+                    shared.inner(),
+                    &operation_id,
+                    "stdout",
+                    text.trim(),
+                    phase,
+                );
             }
             CommandEvent::Stderr(bytes) => {
                 let text = String::from_utf8_lossy(&bytes).into_owned();
                 push_bounded(&mut stderr, &text);
                 let phase = phase_for_line(&text);
-                emit_operation(&app, &operation_id, "stderr", text.trim(), phase);
+                emit_operation(
+                    &app,
+                    shared.inner(),
+                    &operation_id,
+                    "stderr",
+                    text.trim(),
+                    phase,
+                );
             }
             CommandEvent::Error(error) => {
                 push_bounded(&mut stderr, &error);
                 emit_operation(
                     &app,
+                    shared.inner(),
                     &operation_id,
                     "stderr",
                     &error,
@@ -453,6 +858,11 @@ async fn run_operation(
         operation_started.elapsed().as_millis(),
         stderr.lines().rev().take(3).collect::<Vec<_>>()
     ));
+    let completion = completion_phase(&request);
+    let mutate_data = success && operation_mutates_data(&request);
+    update_shared_state(&app, shared.inner(), |state| {
+        state.finish(&operation_id, success, cancelled, completion, mutate_data);
+    });
     Ok(OperationResult {
         operation_id,
         code,
@@ -467,6 +877,7 @@ async fn run_operation(
 async fn cancel_operation(
     app: AppHandle,
     active: State<'_, ActiveOperations>,
+    shared: State<'_, SharedAppState>,
     operation_id: String,
 ) -> Result<(), String> {
     let operation = active
@@ -481,6 +892,9 @@ async fn cancel_operation(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(operation_id.clone());
+    update_shared_state(&app, shared.inner(), |state| {
+        state.set_cancelling(&operation_id)
+    });
 
     let cleanup_name = operation
         .save_name
@@ -493,6 +907,7 @@ async fn cancel_operation(
     append_app_log(format!("operation.cancel id={operation_id}"));
     emit_operation(
         &app,
+        shared.inner(),
         &operation_id,
         "status",
         "Cancellation requested",
@@ -838,6 +1253,7 @@ fn show_main_window(
     window.show().map_err(|error| error.to_string())?;
     let _ = window.unminimize();
     window.set_focus().map_err(|error| error.to_string())?;
+    emit_shared_state_to_window(&app, "main");
     if view.is_some() || capsule.is_some() {
         let _ = window.emit(
             "app-navigation",
@@ -904,16 +1320,39 @@ fn phase_for_line(line: &str) -> &'static str {
     }
 }
 
-fn emit_operation(app: &AppHandle, id: &str, stream: &'static str, text: &str, phase: &str) {
+fn emit_operation(
+    app: &AppHandle,
+    shared: &SharedAppState,
+    id: &str,
+    stream: &'static str,
+    text: &str,
+    phase: &str,
+) {
+    let clean = sanitize_line(text);
+    update_shared_state(app, shared, |state| state.progress(id, &clean, phase));
     let _ = app.emit(
         "operation-progress",
         OperationEvent {
             operation_id: id.to_owned(),
             stream,
-            text: sanitize_line(text),
+            text: clean,
             phase: phase.to_owned(),
         },
     );
+}
+
+fn emit_shared_state_to_window<R: Runtime>(app: &tauri::AppHandle<R>, label: &str) {
+    let snapshot = {
+        let shared = app.state::<SharedAppState>();
+        shared
+            .snapshot
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    };
+    if let Some(window) = app.get_webview_window(label) {
+        let _ = window.emit("app-state-changed", snapshot);
+    }
 }
 
 fn show_quick<R: Runtime>(app: &tauri::AppHandle<R>) {
@@ -921,6 +1360,7 @@ fn show_quick<R: Runtime>(app: &tauri::AppHandle<R>) {
         let _ = window.move_window(Position::TrayCenter);
         let _ = window.show();
         let _ = window.set_focus();
+        emit_shared_state_to_window(app, "quick");
     }
 }
 
@@ -932,6 +1372,7 @@ fn toggle_quick<R: Runtime>(app: &tauri::AppHandle<R>) {
             let _ = window.move_window(Position::TrayCenter);
             let _ = window.show();
             let _ = window.set_focus();
+            emit_shared_state_to_window(app, "quick");
         }
     }
 }
@@ -1008,6 +1449,7 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let builder = tauri::Builder::default()
         .manage(ActiveOperations::default())
+        .manage(SharedAppState::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if !args.iter().any(|arg| arg == "--autostart") {
                 let _ = show_main_window(app.clone(), None, None);
@@ -1024,6 +1466,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             query_desktop,
             delete_capsule,
+            get_shared_app_state,
+            dismiss_shared_operation,
+            publish_settings,
+            publish_onboarding_done,
             run_operation,
             cancel_operation,
             show_main_window,
@@ -1177,6 +1623,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn shared_state_rejects_concurrent_operations_and_tracks_progress() {
+        let mut state = SharedAppStateSnapshot::default();
+        let save = OperationRequest::Save {
+            name: "demo".to_owned(),
+            note: None,
+            ignore_apps: vec![],
+        };
+        state.begin("op-1", &save, true).unwrap();
+        assert!(state.busy);
+        assert_eq!(state.kind.as_deref(), Some("save"));
+        assert!(state.cancelable);
+        assert!(state.begin("op-2", &save, true).is_err());
+        state.progress("op-1", "Discovering workspace", "Capturing workspace");
+        assert_eq!(state.phase, "Capturing workspace");
+        assert_eq!(state.lines, ["Discovering workspace"]);
+    }
+
+    #[test]
+    fn shared_state_completion_refreshes_data_and_dismisses_globally() {
+        let mut state = SharedAppStateSnapshot::default();
+        let update = OperationRequest::Update {
+            name: "demo".to_owned(),
+            ignore_apps: vec![],
+        };
+        state.begin("op-1", &update, true).unwrap();
+        state.finish("op-1", true, false, completion_phase(&update), true);
+        assert!(!state.busy);
+        assert_eq!(state.status, "success");
+        assert_eq!(state.data_revision, 1);
+        state.dismiss("op-1").unwrap();
+        assert_eq!(state.status, "idle");
+        assert!(!state.operation_visible);
+    }
+
+    #[test]
+    fn background_delete_refreshes_without_leaving_an_overlay() {
+        let mut state = SharedAppStateSnapshot::default();
+        let delete = OperationRequest::Delete {
+            name: "demo".to_owned(),
+        };
+        state.begin("op-1", &delete, false).unwrap();
+        state.finish("op-1", true, false, "Complete", true);
+        assert_eq!(state.data_revision, 1);
+        assert_eq!(state.status, "idle");
+        assert!(state.operation_id.is_none());
+        assert!(!state.operation_visible);
+    }
+
+    #[test]
     fn operation_phase_mapping_is_stable() {
         assert_eq!(
             phase_for_line("Discovering workspace for capsule 'demo'..."),
@@ -1302,5 +1797,78 @@ mod tests {
         assert_eq!(value["decisions"][1]["service_index"], 2);
         assert_eq!(value["decisions"][1]["decision"], "skip");
         let _ = fs::remove_file(path);
+    }
+}
+
+#[cfg(test)]
+mod bidirectional_sync_validation {
+    use super::*;
+
+    fn save_request(name: &str) -> OperationRequest {
+        OperationRequest::Save {
+            name: name.to_owned(),
+            note: None,
+            ignore_apps: vec![],
+        }
+    }
+
+    #[test]
+    fn shared_snapshot_is_symmetric_for_full_and_quick_initiators() {
+        let mut state = SharedAppStateSnapshot::default();
+
+        // Full -> quick: the quick surface receives the exact same native snapshot.
+        let from_full = save_request("from-full");
+        state.begin("full-op", &from_full, true).unwrap();
+        let quick_snapshot = state.clone();
+        assert!(quick_snapshot.busy);
+        assert_eq!(quick_snapshot.operation_id.as_deref(), Some("full-op"));
+        assert_eq!(quick_snapshot.title, "Saving from-full");
+        assert!(quick_snapshot.cancelable);
+        state.progress("full-op", "Capturing workspace", "Capturing");
+        let quick_progress = state.clone();
+        assert_eq!(quick_progress.phase, "Capturing");
+        assert_eq!(quick_progress.lines, vec!["Capturing workspace"]);
+        state.finish("full-op", true, false, completion_phase(&from_full), true);
+        assert!(!state.busy);
+        assert_eq!(state.data_revision, 1);
+        state.dismiss("full-op").unwrap();
+
+        // Quick -> full: identical lifecycle, no source-specific state path.
+        let from_quick = save_request("from-quick");
+        state.begin("quick-op", &from_quick, true).unwrap();
+        let full_snapshot = state.clone();
+        assert!(full_snapshot.busy);
+        assert_eq!(full_snapshot.operation_id.as_deref(), Some("quick-op"));
+        assert_eq!(full_snapshot.title, "Saving from-quick");
+        assert!(full_snapshot.cancelable);
+        state.progress("quick-op", "Capturing workspace", "Capturing");
+        let full_progress = state.clone();
+        assert_eq!(full_progress.phase, "Capturing");
+        assert_eq!(full_progress.lines, vec!["Capturing workspace"]);
+        state.finish("quick-op", true, false, completion_phase(&from_quick), true);
+        assert!(!state.busy);
+        assert_eq!(state.data_revision, 2);
+    }
+
+    #[test]
+    fn cancellation_and_completion_are_source_agnostic() {
+        let request = save_request("cancel-me");
+        let mut state = SharedAppStateSnapshot::default();
+        state.begin("either-window", &request, true).unwrap();
+        state.set_cancelling("either-window");
+        let peer_snapshot = state.clone();
+        assert!(peer_snapshot.busy);
+        assert!(peer_snapshot.cancelling);
+        assert_eq!(peer_snapshot.phase, "Cancelling…");
+        state.finish(
+            "either-window",
+            false,
+            true,
+            completion_phase(&request),
+            false,
+        );
+        assert!(!state.busy);
+        assert_eq!(state.phase, "Cancelled");
+        assert_eq!(state.data_revision, 0);
     }
 }

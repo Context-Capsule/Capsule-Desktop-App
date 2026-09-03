@@ -7,7 +7,9 @@ import type {
   OperationRequest,
   OperationResult,
   OverviewData,
-  ServicesData
+  ServicesData,
+  Settings,
+  SharedAppState
 } from './types';
 
 export const DESKTOP_API_VERSION = 1;
@@ -121,6 +123,14 @@ export const getLogPaths = () => queryDesktop<Record<string, string>>('log-paths
 
 export const runOperation = (request: OperationRequest) =>
   invoke<OperationResult>('run_operation', { request });
+export const getSharedAppState = () =>
+  invoke<SharedAppState>('get_shared_app_state');
+export const dismissSharedOperation = (operationId: string) =>
+  invoke<void>('dismiss_shared_operation', { operationId });
+export const publishSettings = (settings: Settings) =>
+  invoke<void>('publish_settings', { settings });
+export const publishOnboardingDone = () =>
+  invoke<void>('publish_onboarding_done');
 export const deleteCapsule = (name: string) =>
   invoke<void>('delete_capsule', { name });
 export const cancelOperation = (operationId: string) =>
@@ -134,6 +144,18 @@ export const openPath = (path: string) => invoke<void>('open_path', { path });
 
 export async function onOperationEvent(handler: (event: OperationEvent) => void) {
   return listen<OperationEvent>('operation-progress', ({ payload }) => handler(payload));
+}
+
+export async function onSharedAppState(handler: (state: SharedAppState) => void) {
+  return listen<SharedAppState>('app-state-changed', ({ payload }) => handler(payload));
+}
+
+export async function onSettingsChanged(handler: (settings: Settings) => void) {
+  return listen<Settings>('settings-changed', ({ payload }) => handler(payload));
+}
+
+export async function onOnboardingDone(handler: () => void) {
+  return listen('onboarding-done', () => handler());
 }
 
 export async function onTrayAction(handler: (event: { action: 'save' | 'restore-last'; nonce: number }) => void) {
