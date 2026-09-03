@@ -78,7 +78,35 @@ export async function contract(): Promise<DesktopContract> {
   return value;
 }
 
-export const getOverview = () => queryDesktop<OverviewData>('overview');
+let overviewCache: OverviewData | null = null;
+let serveCachedOverviewOnce = false;
+
+export async function getOverview(): Promise<OverviewData> {
+  if (serveCachedOverviewOnce && overviewCache) {
+    serveCachedOverviewOnce = false;
+    const snapshot = overviewCache;
+    // Reconcile quietly after the UI has already removed the deleted capsule.
+    // A failed background read must not resurrect stale data or block the user.
+    void queryDesktop<OverviewData>('overview')
+      .then((value) => { overviewCache = value; })
+      .catch((error) => traceFrontend('overview.reconcile', `failed error=${error instanceof Error ? error.message : String(error)}`));
+    return snapshot;
+  }
+
+  const value = await queryDesktop<OverviewData>('overview');
+  overviewCache = value;
+  return value;
+}
+
+export function markCapsuleDeleted(name: string) {
+  if (!overviewCache) return;
+  const normalized = name.trim().toLowerCase();
+  overviewCache = {
+    ...overviewCache,
+    capsules: overviewCache.capsules.filter((capsule) => capsule.name.trim().toLowerCase() !== normalized)
+  };
+  serveCachedOverviewOnce = true;
+}
 export const getCapsule = (reference: string) => queryDesktop<any>('capsule', [reference]);
 export const getHistory = (name: string) => queryDesktop<HistoryData>('history', [name]);
 export const getDiff = (before: string, after: string) => queryDesktop<any>('diff', [before, after]);
@@ -93,6 +121,8 @@ export const getLogPaths = () => queryDesktop<Record<string, string>>('log-paths
 
 export const runOperation = (request: OperationRequest) =>
   invoke<OperationResult>('run_operation', { request });
+export const deleteCapsule = (name: string) =>
+  invoke<void>('delete_capsule', { name });
 export const cancelOperation = (operationId: string) =>
   invoke<void>('cancel_operation', { operationId });
 

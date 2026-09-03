@@ -8,7 +8,8 @@
   } from '@tauri-apps/plugin-notification';
   import type { CapsuleSummary, OperationEvent, OperationRequest, Settings } from './lib/types';
   import { defaultSettings } from './lib/types';
-  import { cancelOperation, contract, getLiveWorkspace, hideQuickPanel, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
+  import { cancelOperation, contract, deleteCapsule, getLiveWorkspace, hideQuickPanel, markCapsuleDeleted, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
+  import DeleteConfirmModal from './components/DeleteConfirmModal.svelte';
   import FullApp from './components/FullApp.svelte';
   import OperationOverlay from './components/OperationOverlay.svelte';
   import Onboarding from './components/Onboarding.svelte';
@@ -34,6 +35,9 @@
   let compatibilityError = $state('');
   let trayAction = $state<{ action: 'save' | 'restore-last'; nonce: number } | null>(null);
   let onboardingVisible = $state(localStorage.getItem(ONBOARDING_KEY) !== 'done');
+  let pendingDelete = $state<string | null>(null);
+  let deleteBusy = $state(false);
+  let deleteError = $state('');
 
   function loadSettings(): Settings {
     try {
@@ -130,7 +134,11 @@
 
   async function execute(request: OperationRequest) {
     if (busy) return;
-    if (request.kind === 'delete' && !window.confirm(`Delete “${request.name}” and all of its revisions?`)) return;
+    if (request.kind === 'delete') {
+      pendingDelete = request.name;
+      deleteError = '';
+      return;
+    }
 
     // Paint the operation state synchronously before any discovery/preflight
     // await. Previously SaveModal closed first, then this function waited on a
@@ -187,6 +195,27 @@
       busy = false;
       operationCancelable = false;
       cancelling = false;
+    }
+  }
+
+  async function confirmDelete() {
+    const name = pendingDelete;
+    if (!name || deleteBusy || busy) return;
+
+    deleteBusy = true;
+    deleteError = '';
+    busy = true;
+    try {
+      await deleteCapsule(name);
+      markCapsuleDeleted(name);
+      pendingDelete = null;
+      refreshVersion += 1;
+      void notify('Context Capsule', `Deleted ${name}.`);
+    } catch (error) {
+      deleteError = error instanceof Error ? error.message : String(error);
+    } finally {
+      busy = false;
+      deleteBusy = false;
     }
   }
 
@@ -253,6 +282,16 @@
   <Onboarding
     onfinish={() => { localStorage.setItem(ONBOARDING_KEY, 'done'); onboardingVisible = false; }}
     onInstallBrowser={() => execute({ kind: 'install-browser-host', browser: 'firefox' })}
+  />
+{/if}
+
+{#if pendingDelete}
+  <DeleteConfirmModal
+    name={pendingDelete}
+    deleting={deleteBusy}
+    error={deleteError}
+    onclose={() => { if (!deleteBusy) { pendingDelete = null; deleteError = ''; } }}
+    onconfirm={confirmDelete}
   />
 {/if}
 

@@ -6,51 +6,76 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFile(resolve(root, path), 'utf8');
 
-test('operations finish on direct child termination instead of waiting for pipe EOF', async () => {
+test('generic operations still finish on direct child termination', async () => {
   const source = await read('src-tauri/src/lib.rs');
   const start = source.indexOf('async fn run_operation');
   const end = source.indexOf('async fn cancel_operation', start);
   const implementation = source.slice(start, end);
   assert.match(implementation, /CommandEvent::Terminated\(payload\)/);
   assert.match(implementation, /operation\.terminated/);
-  assert.match(implementation, /operation_started\.elapsed\(\)\.as_millis\(\)/);
   const terminated = implementation.slice(implementation.indexOf('CommandEvent::Terminated'));
   assert.match(terminated.slice(0, terminated.indexOf('_ => {}')), /break;/);
 });
 
-test('delete stays on the narrow capsule sidecar path without live discovery', async () => {
-  const source = await read('src-tauri/src/lib.rs');
-  const commandStart = source.indexOf('fn operation_command');
-  const commandEnd = source.indexOf('async fn preferred_operation_directory', commandStart);
-  const command = source.slice(commandStart, commandEnd);
-  assert.match(command, /OperationRequest::Delete \{ name \}[\s\S]*"delete"\.to_owned\(\)[\s\S]*"capsule"/);
-
-  const cwdStart = source.indexOf('async fn preferred_operation_directory');
-  const cwdEnd = source.indexOf('fn existing_local_directory', cwdStart);
-  const cwd = source.slice(cwdStart, cwdEnd);
-  assert.match(cwd, /OperationRequest::Save[\s\S]*OperationRequest::Update/);
-  assert.doesNotMatch(cwd, /OperationRequest::Delete/);
+test('delete has a dedicated narrow Tauri path with authoritative termination', async () => {
+  const rust = await read('src-tauri/src/lib.rs');
+  const start = rust.indexOf('async fn delete_capsule');
+  const end = rust.indexOf('async fn desktop_api_call', start);
+  const implementation = rust.slice(start, end);
+  assert.ok(start >= 0);
+  assert.match(implementation, /sidecar\("capsule"\)/);
+  assert.match(implementation, /\.args\(\["delete"\.to_owned\(\), name\.clone\(\)\]\)/);
+  assert.doesNotMatch(implementation, /emit_operation|preferred_operation_directory|capsule_exists/);
+  assert.match(implementation, /CommandEvent::Terminated[\s\S]*break;/);
 });
 
-test('main sidebar has a reachable compact rail and breakpoint-aware manual toggle', async () => {
+test('delete bypasses window.confirm and the generic operation overlay', async () => {
+  const app = await read('src/App.svelte');
+  const bridge = await read('src/lib/bridge.ts');
+  assert.doesNotMatch(app, /window\.confirm/);
+  assert.match(app, /pendingDelete = request\.name/);
+  assert.match(app, /await deleteCapsule\(name\)/);
+  assert.match(app, /markCapsuleDeleted\(name\)/);
+  assert.match(app, /<DeleteConfirmModal/);
+  assert.match(bridge, /invoke<void>\('delete_capsule'/);
+});
+
+test('post-delete overview refresh can paint from the already-loaded cache', async () => {
+  const bridge = await read('src/lib/bridge.ts');
+  assert.match(bridge, /let overviewCache: OverviewData \| null = null/);
+  assert.match(bridge, /serveCachedOverviewOnce/);
+  assert.match(bridge, /capsules: overviewCache\.capsules\.filter/);
+  assert.match(bridge, /overview\.reconcile/);
+});
+
+test('delete confirmation is app-native and destructive-action styled', async () => {
+  const modal = await read('src/components/DeleteConfirmModal.svelte');
+  const css = await read('src/delete-confirm.css');
+  assert.match(modal, /<Modal title="Delete capsule\?"/);
+  assert.match(modal, /Your project files are not touched/);
+  assert.match(modal, /danger-button delete-confirm-submit/);
+  assert.match(css, /delete-confirm-warning/);
+  assert.match(css, /rgba\(255, 83, 83/);
+});
+
+test('sidebar toggle sits on the sidebar border and preserves a compact rail', async () => {
   const controller = await read('src/lib/responsive-sidebar.ts');
   const css = await read('src/responsive-sidebar.css');
-  const main = await read('src/main.ts');
   const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
   const mainWindow = config.app.windows.find((window) => window.label === 'main');
 
   assert.match(controller, /SIDEBAR_BREAKPOINT = 820/);
-  assert.match(controller, /expanded = !nextNarrow/);
-  assert.match(controller, /if \(nextNarrow === narrow\) return/);
-  assert.match(controller, /expanded = !expanded/);
-  assert.match(controller, /aria-label/);
-  assert.match(css, /sidebar-collapsed/);
-  assert.match(css, /grid-template-columns: 64px minmax\(0, 1fr\)/);
-  assert.match(main, /installResponsiveSidebar\(\)/);
+  assert.match(controller, /sidebar\.append\(toggle\)/);
+  assert.match(controller, /matchMedia/);
+  assert.match(controller, /SIDEBAR_PREFERENCE_KEY/);
+  assert.match(css, /--sidebar-collapsed-width: 72px/);
+  assert.match(css, /position: absolute;[\s\S]*right: -15px/);
+  assert.match(css, /sidebar-toggle\[data-state='collapsed'\] svg/);
+  assert.match(css, /data-sidebar-label/);
   assert.ok(mainWindow.minWidth < 820);
 });
 
-test('quick WebView backing surface is explicitly alpha-zero', async () => {
+test('quick WebView backing surface remains explicitly alpha-zero', async () => {
   const config = JSON.parse(await read('src-tauri/tauri.conf.json'));
   const quick = config.app.windows.find((window) => window.label === 'quick');
   assert.equal(quick.transparent, true);

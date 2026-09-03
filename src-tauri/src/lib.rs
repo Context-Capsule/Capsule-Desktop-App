@@ -158,6 +158,56 @@ async fn query_desktop(app: AppHandle, action: String, args: Vec<String>) -> Res
     Ok(value)
 }
 
+#[tauri::command]
+async fn delete_capsule(app: AppHandle, name: String) -> Result<(), String> {
+    require_nonempty("capsule name", &name)?;
+    let started = Instant::now();
+    append_app_log(format!("delete.begin capsule={name:?}"));
+
+    let (mut rx, _child) = app
+        .shell()
+        .sidecar("capsule")
+        .map_err(|error| format!("Context Capsule sidecar is unavailable: {error}"))?
+        .args(["delete".to_owned(), name.clone()])
+        .spawn()
+        .map_err(|error| format!("could not start capsule delete: {error}"))?;
+
+    let mut stderr = String::new();
+    let mut termination_code = None;
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stderr(bytes) => {
+                push_bounded(&mut stderr, &String::from_utf8_lossy(&bytes));
+            }
+            CommandEvent::Error(error) => {
+                push_bounded(&mut stderr, &error);
+            }
+            CommandEvent::Terminated(payload) => {
+                termination_code = Some(payload.code.unwrap_or(1));
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let code = termination_code
+        .ok_or_else(|| "capsule delete ended without a termination event".to_owned())?;
+    append_app_log(format!(
+        "delete.complete capsule={name:?} code={code} elapsed_ms={}",
+        started.elapsed().as_millis()
+    ));
+    if code == 0 {
+        Ok(())
+    } else {
+        let message = stderr.trim();
+        Err(if message.is_empty() {
+            format!("capsule delete failed with exit code {code}")
+        } else {
+            message.to_owned()
+        })
+    }
+}
+
 async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Result<Value, String> {
     let allowed = match action {
         "contract" | "overview" | "applications" | "live" | "health" | "log-paths" => {
@@ -973,6 +1023,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             query_desktop,
+            delete_capsule,
             run_operation,
             cancel_operation,
             show_main_window,

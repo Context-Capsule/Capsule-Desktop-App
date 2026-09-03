@@ -6,6 +6,7 @@ import './app.css';
 import './glass-overrides.css';
 import './full-save-scroll.css';
 import './responsive-sidebar.css';
+import './delete-confirm.css';
 import 'simple-liquid-glass/web-component';
 
 window.addEventListener('error', (event) => {
