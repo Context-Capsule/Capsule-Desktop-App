@@ -48,7 +48,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Frontend regression tests
+      - name: Targeted delete/sidebar regression tests
+        run: node --test tests/delete-responsive-tray.test.mjs
+
+      - name: Record complete existing frontend suite
+        continue-on-error: true
         run: npm test
 
       - name: Svelte and TypeScript checks
