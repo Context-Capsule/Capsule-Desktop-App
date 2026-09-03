@@ -10,7 +10,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     AppHandle, Emitter, Manager, Runtime, State, WindowEvent,
@@ -158,6 +158,56 @@ async fn query_desktop(app: AppHandle, action: String, args: Vec<String>) -> Res
     Ok(value)
 }
 
+#[tauri::command]
+async fn delete_capsule(app: AppHandle, name: String) -> Result<(), String> {
+    require_nonempty("capsule name", &name)?;
+    let started = Instant::now();
+    append_app_log(format!("delete.begin capsule={name:?}"));
+
+    let (mut rx, _child) = app
+        .shell()
+        .sidecar("capsule")
+        .map_err(|error| format!("Context Capsule sidecar is unavailable: {error}"))?
+        .args(["delete".to_owned(), name.clone()])
+        .spawn()
+        .map_err(|error| format!("could not start capsule delete: {error}"))?;
+
+    let mut stderr = String::new();
+    let mut termination_code = None;
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stderr(bytes) => {
+                push_bounded(&mut stderr, &String::from_utf8_lossy(&bytes));
+            }
+            CommandEvent::Error(error) => {
+                push_bounded(&mut stderr, &error);
+            }
+            CommandEvent::Terminated(payload) => {
+                termination_code = Some(payload.code.unwrap_or(1));
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let code = termination_code
+        .ok_or_else(|| "capsule delete ended without a termination event".to_owned())?;
+    append_app_log(format!(
+        "delete.complete capsule={name:?} code={code} elapsed_ms={}",
+        started.elapsed().as_millis()
+    ));
+    if code == 0 {
+        Ok(())
+    } else {
+        let message = stderr.trim();
+        Err(if message.is_empty() {
+            format!("capsule delete failed with exit code {code}")
+        } else {
+            message.to_owned()
+        })
+    }
+}
+
 async fn desktop_api_call(app: &AppHandle, action: &str, args: &[String]) -> Result<Value, String> {
     let allowed = match action {
         "contract" | "overview" | "applications" | "live" | "health" | "log-paths" => {
@@ -266,6 +316,7 @@ async fn run_operation(
     request: OperationRequest,
 ) -> Result<OperationResult, String> {
     let operation_id = next_operation_id();
+    let operation_started = Instant::now();
     let (program, args) = operation_command(&request)?;
     let decision_file = write_restore_decision_file(&request, &operation_id)?;
     let working_directory = preferred_operation_directory(&app, &request).await;
@@ -364,6 +415,15 @@ async fn run_operation(
             }
             CommandEvent::Terminated(payload) => {
                 code = payload.code.unwrap_or(1);
+                append_app_log(format!(
+                    "operation.terminated id={operation_id} code={code} elapsed_ms={}",
+                    operation_started.elapsed().as_millis()
+                ));
+                // The direct child termination is authoritative. Waiting for the
+                // shell event channel to close can hang on Windows when an inherited
+                // stdout/stderr handle outlives the direct process. Desktop reads
+                // already use this same completion rule.
+                break;
             }
             _ => {}
         }
@@ -389,7 +449,8 @@ async fn run_operation(
     }
     let success = code == 0 && !cancelled;
     append_app_log(format!(
-        "operation.complete id={operation_id} success={success} cancelled={cancelled} code={code} stderr_tail={:?}",
+        "operation.complete id={operation_id} success={success} cancelled={cancelled} code={code} elapsed_ms={} stderr_tail={:?}",
+        operation_started.elapsed().as_millis(),
         stderr.lines().rev().take(3).collect::<Vec<_>>()
     ));
     Ok(OperationResult {
@@ -962,6 +1023,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             query_desktop,
+            delete_capsule,
             run_operation,
             cancel_operation,
             show_main_window,

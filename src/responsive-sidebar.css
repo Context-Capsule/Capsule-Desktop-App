@@ -1,0 +1,133 @@
+.full-root {
+  --sidebar-expanded-width: 224px;
+  --sidebar-collapsed-width: 72px;
+  --sidebar-current-width: var(--sidebar-expanded-width);
+  grid-template-columns: var(--sidebar-current-width) minmax(0, 1fr);
+  transition: grid-template-columns .28s cubic-bezier(.22, .9, .32, 1);
+}
+
+.full-root.sidebar-collapsed { --sidebar-current-width: var(--sidebar-collapsed-width); }
+.full-content { min-width: 0; transition: padding .22s ease; }
+.sidebar {
+  position: relative;
+  min-width: 0;
+  overflow: visible;
+  transition: padding .24s cubic-bezier(.22, .9, .32, 1);
+}
+.sidebar::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  right: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,.1) 15%, rgba(255,255,255,.06) 82%, transparent);
+  pointer-events: none;
+}
+.sidebar .full-brand { min-width: 0; }
+.sidebar .full-brand > div:nth-child(2) {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity .16s ease, transform .22s ease, width .22s ease;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  z-index: 30;
+  top: 76px;
+  right: -15px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(20, 23, 29, .82);
+  box-shadow: 0 9px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.07);
+  color: var(--muted);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.sidebar-toggle:hover {
+  color: var(--ink);
+  border-color: rgba(234,255,54,.3);
+  background: rgba(28,32,39,.94);
+  box-shadow: 0 10px 30px rgba(0,0,0,.34), 0 0 0 3px rgba(234,255,54,.045);
+  transform: scale(1.055);
+}
+.sidebar-toggle:focus-visible { outline: 2px solid rgba(234,255,54,.75); outline-offset: 3px; }
+.sidebar-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform .24s cubic-bezier(.22, .9, .32, 1);
+}
+.sidebar-toggle[data-state='collapsed'] svg { transform: rotate(180deg); }
+
+.full-root.sidebar-collapsed .sidebar { padding-left: 10px; padding-right: 10px; }
+.full-root.sidebar-collapsed .full-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.full-root.sidebar-collapsed .full-brand > div:nth-child(2) {
+  width: 0;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+}
+.full-root.sidebar-collapsed .full-brand .brand-mark { flex: 0 0 auto; margin: 0; }
+.full-root.sidebar-collapsed .sidebar nav button {
+  position: relative;
+  width: 44px;
+  min-width: 44px;
+  margin-inline: auto;
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 0;
+}
+.full-root.sidebar-collapsed .sidebar nav button svg { flex: 0 0 auto; }
+.full-root.sidebar-collapsed .sidebar nav button::after {
+  content: attr(data-sidebar-label);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translate(4px, -50%);
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 9px;
+  background: rgba(18,21,27,.94);
+  box-shadow: 0 8px 28px rgba(0,0,0,.28);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .14s ease, transform .14s ease;
+}
+.full-root.sidebar-collapsed .sidebar nav button:hover::after,
+.full-root.sidebar-collapsed .sidebar nav button:focus-visible::after { opacity: 1; transform: translate(0, -50%); }
+.full-root.sidebar-collapsed .sidebar-status { align-items: center; padding-left: 0; padding-right: 0; }
+.full-root.sidebar-collapsed .sidebar-status > span,
+.full-root.sidebar-collapsed .sidebar-status .status-pill > span:last-child { display: none; }
+.full-root.sidebar-collapsed .sidebar-status .status-pill { align-self: center; padding: 6px; }
+
+@media (max-width: 820px) {
+  .full-content { padding: 20px 16px 52px; }
+  .capsule-grid { grid-template-columns: minmax(0, 1fr); }
+  .library-toolbar { gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .full-root, .full-content, .sidebar, .sidebar-toggle, .sidebar-toggle svg, .sidebar .full-brand > div:nth-child(2) { transition: none !important; }
+}

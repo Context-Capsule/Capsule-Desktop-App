@@ -1,0 +1,46 @@
+name: Deliver validated delete/sidebar patch
+
+on:
+  push:
+    branches:
+      - fix/delete-responsive-tray-ui-20260903
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deliver-delete-sidebar-pot-us
+  cancel-in-progress: true
+
+jobs:
+  deliver:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 8
+    steps:
+      - name: Verify POTUS runner
+        shell: pwsh
+        run: |
+          if ('${{ runner.name }}' -ne 'POTUS') { throw "Expected runner POTUS, got '${{ runner.name }}'" }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply already-validated patch and commit product files
+        shell: pwsh
+        run: |
+          git config core.autocrlf false
+          node -e "const fs=require('fs'); for(const p of ['src/App.svelte','src/lib/bridge.ts','src-tauri/src/lib.rs','src/main.ts']) { const s=fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n'); fs.writeFileSync(p,s,'utf8'); }"
+          node scripts/apply-delete-sidebar-polish.mjs
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
+          if (Select-String -Path src\App.svelte -Pattern 'window\.confirm') { throw 'Native browser confirm is still present' }
+          git add src\App.svelte src\lib\bridge.ts src-tauri\src\lib.rs src\lib\responsive-sidebar.ts src\responsive-sidebar.css src\components\DeleteConfirmModal.svelte src\delete-confirm.css src\main.ts tests\delete-responsive-tray.test.mjs tests\visual\delete-sidebar.html
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'staged diff check failed' }
+          git config user.name 'GPT Slave'
+          git config user.email 'unknown.entiti911@gmail.com'
+          git commit -m '[skip ci] fix: make capsule delete immediate and polish sidebar'
+          if ($LASTEXITCODE -ne 0) { throw 'validated product commit failed' }
+          git push origin HEAD:fix/delete-responsive-tray-ui-20260903
+          if ($LASTEXITCODE -ne 0) { throw 'validated product push failed' }
