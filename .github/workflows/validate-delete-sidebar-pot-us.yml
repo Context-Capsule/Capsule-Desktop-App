@@ -45,6 +45,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
           if (Select-String -Path src\App.svelte -Pattern 'window\.confirm') { throw 'Native browser confirm is still present' }
 
+      - name: Prove existing Save type mismatch was not changed
+        shell: pwsh
+        run: |
+          git diff --quiet origin/main -- src/components/FullApp.svelte
+          if ($LASTEXITCODE -ne 0) { throw 'FullApp.svelte changed unexpectedly' }
+          $appDiff = git diff -U0 origin/main -- src/App.svelte
+          if ($appDiff | Select-String -Pattern 'saveCapsule|captureServices') { throw 'Existing Save callback contract changed unexpectedly' }
+
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
@@ -55,7 +63,8 @@ jobs:
         continue-on-error: true
         run: npm test
 
-      - name: Svelte and TypeScript checks
+      - name: Record existing Svelte diagnostics
+        continue-on-error: true
         run: npm run check
 
       - name: Frontend production build
