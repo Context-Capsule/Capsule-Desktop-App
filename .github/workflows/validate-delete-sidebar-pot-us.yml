@@ -29,6 +29,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Normalize checkout line endings
+        shell: pwsh
+        run: |
+          git config core.autocrlf false
+          git checkout-index --all --force
+
       - name: Apply focused product patch
         run: node scripts/apply-delete-sidebar-polish.mjs
 
