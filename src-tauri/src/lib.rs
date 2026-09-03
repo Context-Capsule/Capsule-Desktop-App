@@ -10,7 +10,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     AppHandle, Emitter, Manager, Runtime, State, WindowEvent,
@@ -266,6 +266,7 @@ async fn run_operation(
     request: OperationRequest,
 ) -> Result<OperationResult, String> {
     let operation_id = next_operation_id();
+    let operation_started = Instant::now();
     let (program, args) = operation_command(&request)?;
     let decision_file = write_restore_decision_file(&request, &operation_id)?;
     let working_directory = preferred_operation_directory(&app, &request).await;
@@ -364,6 +365,15 @@ async fn run_operation(
             }
             CommandEvent::Terminated(payload) => {
                 code = payload.code.unwrap_or(1);
+                append_app_log(format!(
+                    "operation.terminated id={operation_id} code={code} elapsed_ms={}",
+                    operation_started.elapsed().as_millis()
+                ));
+                // The direct child termination is authoritative. Waiting for the
+                // shell event channel to close can hang on Windows when an inherited
+                // stdout/stderr handle outlives the direct process. Desktop reads
+                // already use this same completion rule.
+                break;
             }
             _ => {}
         }
@@ -389,7 +399,8 @@ async fn run_operation(
     }
     let success = code == 0 && !cancelled;
     append_app_log(format!(
-        "operation.complete id={operation_id} success={success} cancelled={cancelled} code={code} stderr_tail={:?}",
+        "operation.complete id={operation_id} success={success} cancelled={cancelled} code={code} elapsed_ms={} stderr_tail={:?}",
+        operation_started.elapsed().as_millis(),
         stderr.lines().rev().take(3).collect::<Vec<_>>()
     ));
     Ok(OperationResult {

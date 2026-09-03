@@ -1,0 +1,67 @@
+.full-root {
+  grid-template-columns: 224px minmax(0, 1fr);
+  transition: grid-template-columns .18s ease;
+}
+
+.full-content { min-width: 0; }
+.sidebar { min-width: 0; overflow: hidden; }
+.sidebar .full-brand { min-width: 0; }
+.sidebar .full-brand > div:nth-child(2) { min-width: 0; white-space: nowrap; }
+
+.sidebar-toggle {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 10px;
+  background: rgba(255,255,255,.035);
+  color: var(--muted);
+  cursor: pointer;
+  font: 20px/1 system-ui, sans-serif;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.sidebar-toggle:hover {
+  color: var(--ink);
+  border-color: rgba(234,255,54,.18);
+  background: rgba(255,255,255,.06);
+}
+
+.full-root.sidebar-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+.full-root.sidebar-collapsed .sidebar { padding-left: 10px; padding-right: 10px; }
+.full-root.sidebar-collapsed .full-brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.full-root.sidebar-collapsed .full-brand .brand-mark,
+.full-root.sidebar-collapsed .full-brand > div:nth-child(2) { display: none; }
+.full-root.sidebar-collapsed .sidebar-toggle { margin-left: 0; }
+.full-root.sidebar-collapsed .sidebar nav button {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 0;
+}
+.full-root.sidebar-collapsed .sidebar nav button svg { flex: 0 0 auto; }
+.full-root.sidebar-collapsed .sidebar-status {
+  align-items: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.full-root.sidebar-collapsed .sidebar-status > span,
+.full-root.sidebar-collapsed .sidebar-status .status-pill > span:last-child { display: none; }
+.full-root.sidebar-collapsed .sidebar-status .status-pill {
+  align-self: center;
+  padding: 6px;
+}
+
+@media (max-width: 820px) {
+  .full-content { padding: 20px 16px 52px; }
+  .capsule-grid { grid-template-columns: minmax(0, 1fr); }
+  .library-toolbar { gap: 8px; }
+}

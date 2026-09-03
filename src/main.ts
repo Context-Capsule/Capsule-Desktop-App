@@ -1,9 +1,11 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import { getFrontendTrace, traceFrontend } from './lib/bridge';
+import { installResponsiveSidebar } from './lib/responsive-sidebar';
 import './app.css';
 import './glass-overrides.css';
 import './full-save-scroll.css';
+import './responsive-sidebar.css';
 import 'simple-liquid-glass/web-component';
 
 window.addEventListener('error', (event) => {
@@ -34,3 +36,4 @@ window.addEventListener('keydown', (event) => {
 
 traceFrontend('webview.boot', `href=${window.location.href}`);
 mount(App, { target: document.getElementById('app')! });
+installResponsiveSidebar();
