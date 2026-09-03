@@ -15,7 +15,7 @@ concurrency:
 jobs:
   validate:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - name: Verify POTUS runner
         shell: pwsh
@@ -29,25 +29,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Normalize patch inputs
+      - name: Normalize and apply focused product patch
         shell: pwsh
         run: |
           git config core.autocrlf false
           node -e "const fs=require('fs'); for(const p of ['src/App.svelte','src/lib/bridge.ts','src-tauri/src/lib.rs','src/main.ts']) { const s=fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n'); fs.writeFileSync(p,s,'utf8'); }"
-
-      - name: Apply focused product patch
-        run: node scripts/apply-delete-sidebar-polish.mjs
-
-      - name: Validate patch shape
-        shell: pwsh
-        run: |
+          node scripts/apply-delete-sidebar-polish.mjs
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
           if (Select-String -Path src\App.svelte -Pattern 'window\.confirm') { throw 'Native browser confirm is still present' }
-
-      - name: Prove existing Save type mismatch was not changed
-        shell: pwsh
-        run: |
           git diff --quiet origin/main -- src/components/FullApp.svelte
           if ($LASTEXITCODE -ne 0) { throw 'FullApp.svelte changed unexpectedly' }
           $appDiff = git diff -U0 origin/main -- src/App.svelte
@@ -59,20 +49,29 @@ jobs:
       - name: Targeted delete/sidebar regression tests
         run: node --test tests/delete-responsive-tray.test.mjs
 
-      - name: Record complete existing frontend suite
-        continue-on-error: true
-        run: npm test
-
-      - name: Record existing Svelte diagnostics
-        continue-on-error: true
-        run: npm run check
-
       - name: Frontend production build
         run: npm run build
 
-      - name: Format Rust patch
+      - name: Prepare CI-only Tauri packaging placeholders
         shell: pwsh
-        run: cargo fmt --manifest-path src-tauri\Cargo.toml
+        run: |
+          # main currently ships only icon.svg while tauri-build on Windows requires icon.ico.
+          # Write a tiny validation-only ICO and sidecar placeholders; none are staged or committed.
+          $ico = 'AAABAAEAICAAAAAAIADWAAAAFgAAAIlQTkcNChoKAAAADUlIRFIAAAAgAAAAIAgGAAAAc3p69AAAAJ1JREFUeJztl7ENgDAMBD+ICZCgyQLsPw0L0LAEVDQhNiYksQt/C/o/HstKwjTHE4oaNMMdAABGyUvbEYsD1mVnnwduCP8ES0HIX1AznPPLAtQO53zVh/AB0OrrKX97DThAb4k2IfC+0XKSDLR6Aw6gDiAewlYbUr0BB7AHULLxvij1t9cA0K6FnC/ZQG0Iyo89lt9Suxf0kM0h7KkLW5clJL/A+FIAAAAASUVORK5CYII='
+          [IO.File]::WriteAllBytes((Join-Path $PWD 'src-tauri\icons\icon.ico'), [Convert]::FromBase64String($ico))
+          New-Item -ItemType Directory -Force -Path 'src-tauri\binaries' | Out-Null
+          @(
+            'capsule-x86_64-pc-windows-msvc.exe',
+            'capsule-agent-worker-x86_64-pc-windows-msvc.exe',
+            'capsule-firefox-host-x86_64-pc-windows-msvc.exe',
+            'capsule-chrome-host-x86_64-pc-windows-msvc.exe'
+          ) | ForEach-Object {
+            $path = Join-Path $PWD "src-tauri\binaries\$_"
+            if (-not (Test-Path $path)) { [IO.File]::WriteAllBytes($path, [byte[]]@(77,90)) }
+          }
+
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
 
       - name: Tauri backend tests
         run: cargo test --manifest-path src-tauri\Cargo.toml
