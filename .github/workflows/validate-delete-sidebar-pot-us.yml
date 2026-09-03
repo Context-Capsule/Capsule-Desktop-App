@@ -29,11 +29,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Normalize checkout line endings
+      - name: Normalize patch inputs
         shell: pwsh
         run: |
           git config core.autocrlf false
-          git checkout-index --all --force
+          node -e "const fs=require('fs'); for(const p of ['src/App.svelte','src/lib/bridge.ts','src-tauri/src/lib.rs','src/main.ts']) { const s=fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n'); fs.writeFileSync(p,s,'utf8'); }"
 
       - name: Apply focused product patch
         run: node scripts/apply-delete-sidebar-polish.mjs
