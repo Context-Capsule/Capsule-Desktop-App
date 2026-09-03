@@ -1,0 +1,107 @@
+name: Validate delete/sidebar POTUS
+
+on:
+  push:
+    branches:
+      - fix/delete-responsive-tray-ui-20260903
+
+permissions:
+  contents: write
+
+concurrency:
+  group: validate-delete-sidebar-pot-us
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 35
+    steps:
+      - name: Verify POTUS runner
+        shell: pwsh
+        run: |
+          if ('${{ runner.name }}' -ne 'POTUS') { throw "Expected runner POTUS, got '${{ runner.name }}'" }
+          node --version
+          npm --version
+          cargo --version
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply focused product patch
+        run: node scripts/apply-delete-sidebar-polish.mjs
+
+      - name: Validate patch shape
+        shell: pwsh
+        run: |
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
+          if (Select-String -Path src\App.svelte -Pattern 'window\.confirm') { throw 'Native browser confirm is still present' }
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Frontend regression tests
+        run: npm test
+
+      - name: Svelte and TypeScript checks
+        run: npm run check
+
+      - name: Frontend production build
+        run: npm run build
+
+      - name: Format Rust patch
+        shell: pwsh
+        run: cargo fmt --manifest-path src-tauri\Cargo.toml
+
+      - name: Tauri backend tests
+        run: cargo test --manifest-path src-tauri\Cargo.toml
+
+      - name: Tauri backend check
+        run: cargo check --manifest-path src-tauri\Cargo.toml --all-targets
+
+      - name: Capture sidebar and delete-dialog screenshots
+        shell: pwsh
+        run: |
+          $edge = @(
+            "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe",
+            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $edge) { throw 'Microsoft Edge is unavailable for screenshots' }
+          $out = Join-Path $PWD 'screenshots\delete-sidebar'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $fixturePath = (Resolve-Path 'tests\visual\delete-sidebar.html').Path
+          $base = [System.Uri]::new($fixturePath).AbsoluteUri
+          $shots = @(
+            @{ Name = 'sidebar-expanded.png'; Query = '' },
+            @{ Name = 'sidebar-collapsed.png'; Query = '?state=collapsed' },
+            @{ Name = 'delete-dialog.png'; Query = '?dialog=1' }
+          )
+          foreach ($shot in $shots) {
+            $target = Join-Path $out $shot.Name
+            & $edge --headless=new --disable-gpu --hide-scrollbars --window-size=1100,760 "--screenshot=$target" "$base$($shot.Query)"
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $target)) { throw "Screenshot failed: $($shot.Name)" }
+          }
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Upload visual validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: delete-sidebar-visuals
+          path: screenshots/delete-sidebar/*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Commit validated product changes
+        shell: pwsh
+        run: |
+          git add src\App.svelte src\lib\bridge.ts src-tauri\src\lib.rs src\lib\responsive-sidebar.ts src\responsive-sidebar.css src\components\DeleteConfirmModal.svelte src\delete-confirm.css src\main.ts tests\delete-responsive-tray.test.mjs tests\visual\delete-sidebar.html
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'staged diff check failed' }
+          git config user.name 'GPT Slave'
+          git config user.email 'unknown.entiti911@gmail.com'
+          git commit -m '[skip ci] fix: make capsule delete immediate and polish sidebar'
+          if ($LASTEXITCODE -ne 0) { throw 'validated product commit failed' }
+          git push origin HEAD:fix/delete-responsive-tray-ui-20260903
+          if ($LASTEXITCODE -ne 0) { throw 'validated product push failed' }
