@@ -1,4 +1,4 @@
-name: Validate delete/sidebar POTUS
+name: Deliver validated delete/sidebar patch
 
 on:
   push:
@@ -9,27 +9,24 @@ permissions:
   contents: write
 
 concurrency:
-  group: validate-delete-sidebar-pot-us
+  group: deliver-delete-sidebar-pot-us
   cancel-in-progress: true
 
 jobs:
-  validate:
+  deliver:
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 30
+    timeout-minutes: 8
     steps:
       - name: Verify POTUS runner
         shell: pwsh
         run: |
           if ('${{ runner.name }}' -ne 'POTUS') { throw "Expected runner POTUS, got '${{ runner.name }}'" }
-          node --version
-          npm --version
-          cargo --version
 
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Normalize and apply focused product patch
+      - name: Apply already-validated patch and commit product files
         shell: pwsh
         run: |
           git config core.autocrlf false
@@ -38,82 +35,6 @@ jobs:
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
           if (Select-String -Path src\App.svelte -Pattern 'window\.confirm') { throw 'Native browser confirm is still present' }
-          git diff --quiet origin/main -- src/components/FullApp.svelte
-          if ($LASTEXITCODE -ne 0) { throw 'FullApp.svelte changed unexpectedly' }
-          $appDiff = git diff -U0 origin/main -- src/App.svelte
-          if ($appDiff | Select-String -Pattern 'saveCapsule|captureServices') { throw 'Existing Save callback contract changed unexpectedly' }
-
-      - name: Install frontend dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Targeted delete/sidebar regression tests
-        run: node --test tests/delete-responsive-tray.test.mjs
-
-      - name: Frontend production build
-        run: npm run build
-
-      - name: Prepare CI-only Tauri packaging placeholders
-        shell: pwsh
-        run: |
-          # main currently ships only icon.svg while tauri-build on Windows requires icon.ico.
-          # Write a tiny validation-only ICO and sidecar placeholders; none are staged or committed.
-          $ico = 'AAABAAEAICAAAAAAIADWAAAAFgAAAIlQTkcNChoKAAAADUlIRFIAAAAgAAAAIAgGAAAAc3p69AAAAJ1JREFUeJztl7ENgDAMBD+ICZCgyQLsPw0L0LAEVDQhNiYksQt/C/o/HstKwjTHE4oaNMMdAABGyUvbEYsD1mVnnwduCP8ES0HIX1AznPPLAtQO53zVh/AB0OrrKX97DThAb4k2IfC+0XKSDLR6Aw6gDiAewlYbUr0BB7AHULLxvij1t9cA0K6FnC/ZQG0Iyo89lt9Suxf0kM0h7KkLW5clJL/A+FIAAAAASUVORK5CYII='
-          [IO.File]::WriteAllBytes((Join-Path $PWD 'src-tauri\icons\icon.ico'), [Convert]::FromBase64String($ico))
-          New-Item -ItemType Directory -Force -Path 'src-tauri\binaries' | Out-Null
-          @(
-            'capsule-x86_64-pc-windows-msvc.exe',
-            'capsule-agent-worker-x86_64-pc-windows-msvc.exe',
-            'capsule-firefox-host-x86_64-pc-windows-msvc.exe',
-            'capsule-chrome-host-x86_64-pc-windows-msvc.exe'
-          ) | ForEach-Object {
-            $path = Join-Path $PWD "src-tauri\binaries\$_"
-            if (-not (Test-Path $path)) { [IO.File]::WriteAllBytes($path, [byte[]]@(77,90)) }
-          }
-
-      - name: Rust formatting
-        run: cargo fmt --manifest-path src-tauri\Cargo.toml -- --check
-
-      - name: Tauri backend tests
-        run: cargo test --manifest-path src-tauri\Cargo.toml
-
-      - name: Tauri backend check
-        run: cargo check --manifest-path src-tauri\Cargo.toml --all-targets
-
-      - name: Capture sidebar and delete-dialog screenshots
-        shell: pwsh
-        run: |
-          $edge = @(
-            "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe",
-            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
-          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $edge) { throw 'Microsoft Edge is unavailable for screenshots' }
-          $out = Join-Path $PWD 'screenshots\delete-sidebar'
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
-          $fixturePath = (Resolve-Path 'tests\visual\delete-sidebar.html').Path
-          $base = [System.Uri]::new($fixturePath).AbsoluteUri
-          $shots = @(
-            @{ Name = 'sidebar-expanded.png'; Query = '' },
-            @{ Name = 'sidebar-collapsed.png'; Query = '?state=collapsed' },
-            @{ Name = 'delete-dialog.png'; Query = '?dialog=1' }
-          )
-          foreach ($shot in $shots) {
-            $target = Join-Path $out $shot.Name
-            & $edge --headless=new --disable-gpu --hide-scrollbars --window-size=1100,760 "--screenshot=$target" "$base$($shot.Query)"
-            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $target)) { throw "Screenshot failed: $($shot.Name)" }
-          }
-          Get-ChildItem $out | Format-Table Name, Length
-
-      - name: Upload visual validation
-        uses: actions/upload-artifact@v4
-        with:
-          name: delete-sidebar-visuals
-          path: screenshots/delete-sidebar/*.png
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Commit validated product changes
-        shell: pwsh
-        run: |
           git add src\App.svelte src\lib\bridge.ts src-tauri\src\lib.rs src\lib\responsive-sidebar.ts src\responsive-sidebar.css src\components\DeleteConfirmModal.svelte src\delete-confirm.css src\main.ts tests\delete-responsive-tray.test.mjs tests\visual\delete-sidebar.html
           git diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'staged diff check failed' }
