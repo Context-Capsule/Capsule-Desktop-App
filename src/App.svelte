@@ -6,9 +6,24 @@
     requestPermission,
     sendNotification
   } from '@tauri-apps/plugin-notification';
-  import type { CapsuleSummary, OperationEvent, OperationRequest, Settings } from './lib/types';
+  import type { CapsuleSummary, OperationRequest, Settings, SharedAppState } from './lib/types';
   import { defaultSettings } from './lib/types';
-  import { cancelOperation, contract, deleteCapsule, getLiveWorkspace, hideQuickPanel, markCapsuleDeleted, onOperationEvent, onTrayAction, runOperation } from './lib/bridge';
+  import {
+    cancelOperation,
+    contract,
+    deleteCapsule,
+    dismissSharedOperation,
+    getSharedAppState,
+    hideQuickPanel,
+    markCapsuleDeleted,
+    onOnboardingDone,
+    onSettingsChanged,
+    onSharedAppState,
+    onTrayAction,
+    publishOnboardingDone,
+    publishSettings,
+    runOperation
+  } from './lib/bridge';
   import DeleteConfirmModal from './components/DeleteConfirmModal.svelte';
   import FullApp from './components/FullApp.svelte';
   import OperationOverlay from './components/OperationOverlay.svelte';
@@ -19,19 +34,26 @@
   document.documentElement.dataset.windowMode = mode;
   const SETTINGS_KEY = 'context-capsule:settings:v1';
   const ONBOARDING_KEY = 'context-capsule:onboarding:v1';
-  const INTERNAL_APP_SELECTOR = 'context-capsule-desktop';
+
+  const emptySharedState: SharedAppState = {
+    generation: 0,
+    busy: false,
+    operationId: null,
+    kind: null,
+    title: '',
+    phase: '',
+    lines: [],
+    status: 'idle',
+    cancelable: false,
+    cancelling: false,
+    operationVisible: false,
+    dataRevision: 0
+  };
 
   let settings = $state<Settings>(loadSettings());
-  let busy = $state(false);
-  let refreshVersion = $state(0);
-  let operationTitle = $state('');
-  let operationPhase = $state('Preparing…');
-  let operationLines = $state<string[]>([]);
-  let operationStatus = $state<'running' | 'success' | 'error'>('running');
-  let operationVisible = $state(false);
-  let operationId = $state('');
-  let operationCancelable = $state(false);
-  let cancelling = $state(false);
+  let sharedState = $state<SharedAppState>({ ...emptySharedState });
+  let busy = $derived(sharedState.busy);
+  let refreshVersion = $derived(sharedState.dataRevision);
   let compatibilityError = $state('');
   let trayAction = $state<{ action: 'save' | 'restore-last'; nonce: number } | null>(null);
   let onboardingVisible = $state(localStorage.getItem(ONBOARDING_KEY) !== 'done');
@@ -46,10 +68,15 @@
     } catch { return { ...defaultSettings }; }
   }
 
+  function applySettings(next: Settings) {
+    settings = { ...defaultSettings, ...next };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    document.documentElement.dataset.reduceMotion = settings.reduceMotion ? 'true' : 'false';
+  }
+
   function saveSettings(next: Settings) {
-    settings = next;
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
-    document.documentElement.dataset.reduceMotion = next.reduceMotion ? 'true' : 'false';
+    applySettings(next);
+    void publishSettings(settings).catch(() => undefined);
   }
 
   function titleFor(request: OperationRequest): string {
@@ -63,56 +90,6 @@
       case 'service-prestart': return 'Updating pre-start command';
       case 'install-browser-host': return `Setting up ${request.browser === 'firefox' ? 'Firefox / Zen' : 'Chrome'} integration`;
     }
-  }
-
-  function completionPhase(request: OperationRequest): string {
-    if (request.kind === 'save') return 'Capsule saved';
-    if (request.kind === 'restore') return 'Capsule restored';
-    return 'Complete';
-  }
-
-  function isContextCapsuleApplication(app: any) {
-    const name = typeof app?.name === 'string' ? app.name.trim().toLowerCase() : '';
-    const executable = typeof app?.executable_path === 'string'
-      ? app.executable_path.replace(/\//g, '\\').toLowerCase()
-      : '';
-    return name === 'context capsule'
-      || name === INTERNAL_APP_SELECTOR
-      || executable.endsWith('\\context-capsule-desktop.exe');
-  }
-
-  function isInternalSelector(value: string) {
-    const normalized = value.trim().toLowerCase();
-    return normalized === 'context capsule' || normalized === INTERNAL_APP_SELECTOR;
-  }
-
-  async function withInternalExclusions(request: OperationRequest): Promise<OperationRequest> {
-    if (request.kind !== 'save' && request.kind !== 'update') return request;
-
-    // Advanced discovery includes the exact detected desktop-app selector when
-    // available. If it was not opened, retain the same mature live-workspace
-    // fallback that was already proven before the standalone applications API
-    // was introduced. Progress is painted before this await in execute().
-    if (request.ignoreApps.some(isInternalSelector)) return request;
-
-    try {
-      const live = await getLiveWorkspace();
-      const internalApp = (live?.applications ?? []).find(isContextCapsuleApplication);
-      if (internalApp && typeof internalApp.name === 'string' && internalApp.name.trim()) {
-        const ignoreApps = Array.from(new Set([...request.ignoreApps, internalApp.name.trim()]));
-        return { ...request, ignoreApps };
-      }
-    } catch { /* The operation itself remains authoritative if live discovery is unavailable. */ }
-    return request;
-  }
-
-  function appendUniqueOperationLines(candidates: string[]) {
-    const next = [...operationLines];
-    for (const candidate of candidates) {
-      const clean = candidate.trim();
-      if (clean && !next.includes(clean)) next.push(clean);
-    }
-    operationLines = next.slice(-8);
   }
 
   async function refocusCurrentWindow() {
@@ -140,61 +117,24 @@
       return;
     }
 
-    // Paint the operation state synchronously before any discovery/preflight
-    // await. Previously SaveModal closed first, then this function waited on a
-    // full live-workspace query, exposing the tray home until the user reopened
-    // it. Keeping the overlay visible from the first tick makes progress honest.
-    busy = true;
-    operationVisible = true;
-    operationStatus = 'running';
-    operationTitle = titleFor(request);
-    operationPhase = 'Preparing…';
-    operationLines = [];
-    operationId = '';
-    operationCancelable = request.kind === 'save';
-    cancelling = false;
-
     try {
-      const effectiveRequest = await withInternalExclusions(request);
-      operationTitle = titleFor(effectiveRequest);
-      operationCancelable = effectiveRequest.kind === 'save';
-      const result = await runOperation(effectiveRequest);
-      operationId = result.operationId;
-      if (result.cancelled) {
-        operationStatus = 'error';
-        operationPhase = 'Cancelled';
-        appendUniqueOperationLines(['Save cancelled. No new capsule was kept.']);
-      } else {
-        operationStatus = result.success ? 'success' : 'error';
-        operationPhase = result.success ? completionPhase(effectiveRequest) : 'Action needs attention';
-        if (result.success) {
-          refreshVersion += 1;
-          if (effectiveRequest.kind === 'save' || effectiveRequest.kind === 'restore') {
-            await refocusCurrentWindow();
-          }
-          await notify('Context Capsule', `${operationTitle} completed.`);
-          if (
-            mode === 'quick'
-            && settings.autoCloseQuickPanel
-            && effectiveRequest.kind !== 'save'
-            && effectiveRequest.kind !== 'restore'
-          ) {
-            setTimeout(() => hideQuickPanel().catch(() => undefined), 1300);
-          }
-        } else {
-          // stderr was already streamed through operation-progress. Only append
-          // genuinely new tail lines so one CLI preflight error is never shown twice.
-          appendUniqueOperationLines(result.stderr.split(/\r?\n/).filter(Boolean).slice(-3));
-        }
+      const result = await runOperation(request);
+      if (!result.success) return;
+
+      if (request.kind === 'save' || request.kind === 'restore') {
+        await refocusCurrentWindow();
+      }
+      await notify('Context Capsule', `${titleFor(request)} completed.`);
+      if (
+        mode === 'quick'
+        && settings.autoCloseQuickPanel
+        && request.kind !== 'save'
+        && request.kind !== 'restore'
+      ) {
+        setTimeout(() => hideQuickPanel().catch(() => undefined), 1300);
       }
     } catch (error) {
-      operationStatus = 'error';
-      operationPhase = error instanceof Error ? error.message : String(error);
-      appendUniqueOperationLines([operationPhase]);
-    } finally {
-      busy = false;
-      operationCancelable = false;
-      cancelling = false;
+      console.error('Context Capsule operation failed to start or complete', error);
     }
   }
 
@@ -204,32 +144,32 @@
 
     deleteBusy = true;
     deleteError = '';
-    busy = true;
     try {
       await deleteCapsule(name);
       markCapsuleDeleted(name);
       pendingDelete = null;
-      refreshVersion += 1;
       void notify('Context Capsule', `Deleted ${name}.`);
     } catch (error) {
       deleteError = error instanceof Error ? error.message : String(error);
     } finally {
-      busy = false;
       deleteBusy = false;
     }
   }
 
   async function cancelCurrentSave() {
-    if (!operationCancelable || !operationId || cancelling) return;
-    cancelling = true;
-    operationPhase = 'Cancelling…';
+    const operationId = sharedState.operationId;
+    if (!sharedState.cancelable || !operationId || sharedState.cancelling) return;
     try {
       await cancelOperation(operationId);
     } catch (error) {
-      cancelling = false;
-      operationPhase = error instanceof Error ? error.message : String(error);
-      appendUniqueOperationLines([operationPhase]);
+      console.error('Context Capsule cancellation failed', error);
     }
+  }
+
+  async function dismissCurrentOperation() {
+    const operationId = sharedState.operationId;
+    if (!operationId || sharedState.status === 'running') return;
+    try { await dismissSharedOperation(operationId); } catch { /* stale dismissal is harmless */ }
   }
 
   function saveCapsule(payload: { name: string; note: string; ignoreApps: string[]; captureServices: boolean }) {
@@ -252,17 +192,51 @@
     });
   }
 
+  function finishOnboarding() {
+    localStorage.setItem(ONBOARDING_KEY, 'done');
+    onboardingVisible = false;
+    void publishOnboardingDone().catch(() => undefined);
+  }
+
   onMount(() => {
-    saveSettings(settings);
-    const unsubscribePromise = onOperationEvent((event: OperationEvent) => {
-      operationId = event.operationId;
-      operationPhase = event.phase || operationPhase;
-      appendUniqueOperationLines([event.text]);
+    applySettings(settings);
+    let disposed = false;
+
+    const acceptSharedState = (next: SharedAppState) => {
+      if (!disposed && next.generation >= sharedState.generation) sharedState = next;
+    };
+    const resyncSharedState = () => {
+      if (disposed) return;
+      void getSharedAppState().then(acceptSharedState).catch(() => undefined);
+    };
+    const resyncWhenVisible = () => {
+      if (document.visibilityState === 'visible') resyncSharedState();
+    };
+
+    const sharedPromise = onSharedAppState(acceptSharedState);
+    const settingsPromise = onSettingsChanged((next) => { if (!disposed) applySettings(next); });
+    const onboardingPromise = onOnboardingDone(() => {
+      if (!disposed) {
+        localStorage.setItem(ONBOARDING_KEY, 'done');
+        onboardingVisible = false;
+      }
     });
     const trayPromise = onTrayAction((event) => { trayAction = event; });
+
+    // Hidden tray WebViews can live for the whole app session. Events are the fast
+    // path; focus/visibility snapshots make showing either surface self-healing.
+    window.addEventListener('focus', resyncSharedState);
+    document.addEventListener('visibilitychange', resyncWhenVisible);
+    resyncSharedState();
     contract().catch((error) => { compatibilityError = error instanceof Error ? error.message : String(error); });
+
     return () => {
-      unsubscribePromise.then((unsubscribe) => unsubscribe()).catch(() => undefined);
+      disposed = true;
+      window.removeEventListener('focus', resyncSharedState);
+      document.removeEventListener('visibilitychange', resyncWhenVisible);
+      sharedPromise.then((unsubscribe) => unsubscribe()).catch(() => undefined);
+      settingsPromise.then((unsubscribe) => unsubscribe()).catch(() => undefined);
+      onboardingPromise.then((unsubscribe) => unsubscribe()).catch(() => undefined);
       trayPromise.then((unsubscribe) => unsubscribe()).catch(() => undefined);
     };
   });
@@ -280,7 +254,7 @@
 
 {#if onboardingVisible}
   <Onboarding
-    onfinish={() => { localStorage.setItem(ONBOARDING_KEY, 'done'); onboardingVisible = false; }}
+    onfinish={finishOnboarding}
     onInstallBrowser={() => execute({ kind: 'install-browser-host', browser: 'firefox' })}
   />
 {/if}
@@ -295,14 +269,14 @@
   />
 {/if}
 
-{#if operationVisible}
+{#if sharedState.operationVisible && sharedState.status !== 'idle'}
   <OperationOverlay
-    title={operationTitle}
-    phase={operationPhase}
-    lines={operationLines}
-    status={operationStatus}
-    cancelling={cancelling}
-    oncancel={operationStatus === 'running' && operationCancelable && operationId ? cancelCurrentSave : undefined}
-    onclose={operationStatus === 'running' ? undefined : () => operationVisible = false}
+    title={sharedState.title}
+    phase={sharedState.phase || 'Preparing…'}
+    lines={sharedState.lines}
+    status={sharedState.status}
+    cancelling={sharedState.cancelling}
+    oncancel={sharedState.status === 'running' && sharedState.cancelable && sharedState.operationId ? cancelCurrentSave : undefined}
+    onclose={sharedState.status === 'running' ? undefined : dismissCurrentOperation}
   />
 {/if}

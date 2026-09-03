@@ -102,7 +102,7 @@
           <div class="empty-state warning"><HeartPulse size={20}/><strong>CLI connection needs attention</strong><p>{error}</p><button class="secondary-button small" onclick={refresh}>Try again</button></div>
         {:else if filtered.length}
           {#each filtered as capsule (capsule.name)}
-            <CapsuleCard {capsule} compact onrestore={openRestore} onopen={(item) => { onOpenCapsule(item); openFull('capsules', item); }} />
+            <CapsuleCard {capsule} compact disabled={busy} onrestore={openRestore} onopen={(item) => { onOpenCapsule(item); openFull('capsules', item); }} />
           {/each}
         {:else}
           <div class="empty-state"><Box size={22}/><strong>No capsules yet</strong><p>Save this workspace and it will appear here.</p></div>

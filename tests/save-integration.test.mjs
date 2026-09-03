@@ -69,21 +69,19 @@ test('save dialog keeps Zen safety explicit and gives the extension reconnect lo
   assert.match(source, /internalSelector \? \[internalSelector\]/);
 });
 
-test('save paints progress before self-exclusion discovery and keeps the proven live fallback', async () => {
-  const source = await read('src/App.svelte');
-  const executeStart = source.indexOf('async function execute(request: OperationRequest)');
-  const visible = source.indexOf('operationVisible = true;', executeStart);
-  const exclusionAwait = source.indexOf('await withInternalExclusions(request)', executeStart);
-  assert.ok(executeStart >= 0, 'execute function missing');
-  assert.ok(visible > executeStart, 'operation overlay is not made visible');
-  assert.ok(exclusionAwait > visible, 'self-exclusion discovery still runs before progress is visible');
-  assert.match(source, /const live = await getLiveWorkspace\(\)/);
-  assert.match(source, /getLiveWorkspace/);
-  assert.doesNotMatch(source, /getApplications/);
-  assert.match(source, /function appendUniqueOperationLines/);
-  assert.match(source, /!next\.includes\(clean\)/);
-  assert.match(source, /stderr was already streamed through operation-progress/);
-  assert.match(source, /if \(request\.ignoreApps\.some\(isInternalSelector\)\) return request/);
+test('save publishes shared progress before native self-exclusion discovery', async () => {
+  const app = await read('src/App.svelte');
+  const rust = await read('src-tauri/src/lib.rs');
+  assert.match(app, /getSharedAppState/);
+  assert.match(app, /onSharedAppState/);
+  assert.doesNotMatch(app, /withInternalExclusions/);
+  assert.doesNotMatch(app, /getLiveWorkspace/);
+  const begin = rust.indexOf('state.begin(&operation_id, &request, true)');
+  const exclusion = rust.indexOf('add_internal_app_exclusion(&app, &mut request).await');
+  assert.ok(begin >= 0, 'native shared operation begin missing');
+  assert.ok(exclusion > begin, 'self-exclusion discovery still runs before shared progress begins');
+  assert.match(rust, /desktop_api_call\(app, "live", &\[\]\)\.await/);
+  assert.match(rust, /is_context_capsule_application/);
 });
 
 test('desktop runtime and packaging contracts reject feature-incomplete sidecars', async () => {

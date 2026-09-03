@@ -144,16 +144,17 @@ test('ignore application chooser renders short names only and hides Context Caps
   assert.doesNotMatch(source, /<small>\{app\.executable_path\}<\/small>/);
 });
 
-test('save and restore refocus the active Capsule window and saves always exclude the desktop app', async () => {
+test('save and restore refocus the active Capsule window and native saves exclude the desktop app', async () => {
   const source = await read('src/App.svelte');
+  const rust = await read('src-tauri/src/lib.rs');
   assert.match(source, /getCurrentWindow/);
-  assert.match(source, /INTERNAL_APP_SELECTOR = 'context-capsule-desktop'/);
-  assert.match(source, /withInternalExclusions/);
   assert.match(source, /await current\.show\(\)/);
   assert.match(source, /await current\.setFocus\(\)/);
-  assert.match(source, /if \(request\.kind === 'save'\) return 'Capsule saved'/);
-  assert.match(source, /if \(request\.kind === 'restore'\) return 'Capsule restored'/);
-  assert.match(source, /effectiveRequest\.kind !== 'save'[\s\S]*effectiveRequest\.kind !== 'restore'/);
+  assert.match(source, /request\.kind === 'save' \|\| request\.kind === 'restore'/);
+  assert.match(source, /request\.kind !== 'save'[\s\S]*request\.kind !== 'restore'/);
+  assert.match(rust, /"context-capsule-desktop"/);
+  assert.match(rust, /add_internal_app_exclusion/);
+  assert.match(rust, /OperationRequest::Save \{ ignore_apps, \.\. \}/);
 });
 
 test('live application list hides executable paths and process metadata', async () => {

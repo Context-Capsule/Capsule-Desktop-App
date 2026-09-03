@@ -77,6 +77,21 @@ export type OperationEvent = {
   phase: string;
 };
 
+export type SharedAppState = {
+  generation: number;
+  busy: boolean;
+  operationId: string | null;
+  kind: OperationRequest['kind'] | null;
+  title: string;
+  phase: string;
+  lines: string[];
+  status: 'idle' | 'running' | 'success' | 'error';
+  cancelable: boolean;
+  cancelling: boolean;
+  operationVisible: boolean;
+  dataRevision: number;
+};
+
 export type Settings = {
   startWithWindows: boolean;
   notifications: boolean;

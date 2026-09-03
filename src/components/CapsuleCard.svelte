@@ -4,9 +4,10 @@
   import { metricLine, relativeTime } from '../lib/format';
   import Glass from './Glass.svelte';
 
-  let { capsule, compact = false, onrestore, onopen, onmenu } = $props<{
+  let { capsule, compact = false, disabled = false, onrestore, onopen, onmenu } = $props<{
     capsule: CapsuleSummary;
     compact?: boolean;
+    disabled?: boolean;
     onrestore: (capsule: CapsuleSummary) => void;
     onopen: (capsule: CapsuleSummary) => void;
     onmenu?: (capsule: CapsuleSummary) => void;
@@ -42,7 +43,7 @@
           {#if onmenu}
             <button class="icon-button subtle" title="More actions" onclick={() => onmenu?.(capsule)}><MoreHorizontal size={16}/></button>
           {/if}
-          <button class="restore-button" onclick={() => onrestore(capsule)}>
+          <button class="restore-button" disabled={disabled} onclick={() => onrestore(capsule)}>
             <RotateCcw size={15}/><span>Restore</span><ChevronRight size={14}/>
           </button>
         </div>

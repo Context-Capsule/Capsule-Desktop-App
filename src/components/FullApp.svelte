@@ -25,7 +25,7 @@
     refreshVersion?: number;
     onSettings: (settings: Settings) => void;
     busy?: boolean;
-    onSave: (payload: { name: string; note: string; ignoreApps: string[] }) => void;
+    onSave: (payload: { name: string; note: string; ignoreApps: string[]; captureServices: boolean }) => void;
     onRestore: (payload: { capsule: CapsuleSummary; reference?: string; replace: boolean; decisions: OperationDecision[]; only?: string[] }) => void;
     onOperation: (request: any) => void;
   }>();
@@ -170,7 +170,12 @@
     return () => { unsubscribe.then((stop) => stop()).catch(() => undefined); };
   });
 
-  $effect(() => { refreshVersion; refreshOverview(); });
+  async function refreshSharedData() {
+    await refreshOverview();
+    if (view === 'services') await loadServices();
+  }
+
+  $effect(() => { refreshVersion; void refreshSharedData(); });
 </script>
 
 <div class="full-root">
@@ -195,7 +200,7 @@
       <section class="page">
         <header class="page-header">
           <div class="header-leading"><button class="icon-button" onclick={() => selected=null}><ArrowLeft size={18}/></button><div><span class="section-kicker">Capsule</span><h1>{selected.name}</h1><p>Revision {selected.current_revision} · updated {formatDate(selected.updated_at_unix_ms)}</p></div></div>
-          <div class="header-actions"><button class="secondary-button" onclick={() => onOperation({kind:'update', name:selected!.name, ignoreApps: detail?.stored?.snapshot?.capture_options?.ignored_applications ?? []})}><RefreshCw size={15}/> Update</button><button class="primary-button" onclick={() => openRestore(selected!)}><ListRestart size={15}/> Restore</button></div>
+          <div class="header-actions"><button class="secondary-button" disabled={busy} onclick={() => onOperation({kind:'update', name:selected!.name, ignoreApps: detail?.stored?.snapshot?.capture_options?.ignored_applications ?? []})}><RefreshCw size={15}/> Update</button><button class="primary-button" disabled={busy} onclick={() => openRestore(selected!)}><ListRestart size={15}/> Restore</button></div>
         </header>
 
         <div class="metric-grid">
@@ -231,14 +236,14 @@
           {/if}
         </div></Glass>
 
-        <div class="danger-zone"><button class="danger-button" onclick={() => onOperation({kind:'delete', name:selected!.name})}><Trash2 size={15}/> Delete capsule</button></div>
+        <div class="danger-zone"><button class="danger-button" disabled={busy} onclick={() => onOperation({kind:'delete', name:selected!.name})}><Trash2 size={15}/> Delete capsule</button></div>
       </section>
 
     {:else if view === 'capsules'}
       <section class="page">
-        <header class="page-header"><div><span class="section-kicker">Library</span><h1>Your Capsules</h1><p>Save whole development contexts and return to them without rebuilding your mental state.</p></div><button class="primary-button" onclick={() => showSave=true}>+ Save Capsule</button></header>
+        <header class="page-header"><div><span class="section-kicker">Library</span><h1>Your Capsules</h1><p>Save whole development contexts and return to them without rebuilding your mental state.</p></div><button class="primary-button" disabled={busy} onclick={() => showSave=true}>+ Save Capsule</button></header>
         <div class="library-toolbar"><label class="search-box wide"><Search size={16}/><input bind:value={search} placeholder="Search capsules"/></label><button class="icon-button" onclick={refreshOverview}><RefreshCw size={16}/></button></div>
-        <div class="capsule-grid">{#if loading}{#each Array(6) as _}<div class="skeleton-card tall"></div>{/each}{:else}{#each filtered as capsule (capsule.name)}<CapsuleCard {capsule} onrestore={(item)=>openRestore(item)} onopen={openCapsule}/>{/each}{/if}</div>
+        <div class="capsule-grid">{#if loading}{#each Array(6) as _}<div class="skeleton-card tall"></div>{/each}{:else}{#each filtered as capsule (capsule.name)}<CapsuleCard {capsule} disabled={busy} onrestore={(item)=>openRestore(item)} onopen={openCapsule}/>{/each}{/if}</div>
       </section>
 
     {:else if view === 'live'}
